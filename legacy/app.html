@@ -1,0 +1,1187 @@
+<title>Pttern Tile Studio</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a square drawing plate (the 20 cm tile) beside a narrow workshop panel; stacks on phones. */
+:root {
+  --bg: #ECEEE8;
+  --surface: #F8F8F4;
+  --ink: #1D2423;
+  --muted: #5C6762;
+  --line: #D2D6CD;
+  --accent: #2A5A78;
+  --accent-ink: #FFFFFF;
+  --field: #C6CBC1;
+  --raised: #FBFBF6;
+  --outside: #DCDFD7;
+  --danger: #A23B2C;
+  --f-display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #131716; --surface: #1B201F; --ink: #E5E8E2; --muted: #98A29C; --line: #2D3532;
+    --accent: #7DB0D2; --accent-ink: #0C1820; --field: #3A423F; --raised: #D7DBD2; --outside: #242A28; --danger: #E07B6A;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #131716; --surface: #1B201F; --ink: #E5E8E2; --muted: #98A29C; --line: #2D3532;
+  --accent: #7DB0D2; --accent-ink: #0C1820; --field: #3A423F; --raised: #D7DBD2; --outside: #242A28; --danger: #E07B6A;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 14px; line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 12px 32px;
+}
+button, select, input { font: inherit; color: inherit; }
+button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; max-width: 1180px; margin: 0 auto 12px; }
+.brand { display: flex; align-items: baseline; gap: 10px; }
+.brand h1 { font-family: var(--f-display); font-weight: 700; font-size: 26px; letter-spacing: -0.02em; margin: 0; }
+.brand span { font-family: var(--f-mono); font-size: 12px; color: var(--muted); }
+.tabs { display: flex; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 3px; }
+.tabs button { border: 0; background: none; padding: 6px 14px; border-radius: 999px; cursor: pointer; font-weight: 500; color: var(--muted); }
+.tabs button[aria-selected="true"] { background: var(--ink); color: var(--bg); }
+
+.app { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; max-width: 1180px; margin: 0 auto; align-items: start; }
+@media (max-width: 860px) { .app { grid-template-columns: minmax(0, 1fr); } }
+
+.stage { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.view { position: relative; width: 100%; max-width: min(100%, 78vh); margin: 0 auto; aspect-ratio: 1; }
+.view canvas, .view .three { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 6px; display: block; }
+#cv { touch-action: none; cursor: crosshair; }
+.three { background: var(--outside); overflow: hidden; }
+.three .msg { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); text-align: center; padding: 20px; }
+.ruler { display: flex; justify-content: space-between; font-family: var(--f-mono); font-size: 11px; color: var(--muted); max-width: min(100%, 78vh); width: 100%; margin: 0 auto; }
+
+.tools { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.tbtn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 7px 10px; cursor: pointer; min-height: 40px; }
+.tbtn svg { width: 18px; height: 18px; flex: none; }
+.tbtn[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.tbtn:disabled { opacity: .4; cursor: default; }
+.tsep { width: 1px; background: var(--line); margin: 4px 2px; }
+@media (max-width: 520px) { .tbtn .lbl { display: none; } .tbtn { padding: 8px 9px; } .tools { gap: 4px; } .tsep { display: none; } }
+
+.ctx { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; min-height: 54px; }
+.ctx .hint { color: var(--muted); }
+.ctx .grp { display: flex; gap: 4px; align-items: center; }
+.ctx .grp > label { font-size: 12px; color: var(--muted); margin-right: 2px; }
+.mini { border: 1px solid var(--line); background: var(--bg); border-radius: 6px; padding: 5px 9px; cursor: pointer; min-height: 34px; }
+.mini[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.mini.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.mini.danger { color: var(--danger); }
+
+.panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+details { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+summary { cursor: pointer; padding: 11px 14px; font-family: var(--f-display); font-weight: 700; font-size: 16px; list-style: none; display: flex; justify-content: space-between; }
+summary::after { content: "+"; color: var(--muted); font-family: var(--f-mono); }
+details[open] summary::after { content: "−"; }
+.body { padding: 0 14px 14px; display: flex; flex-direction: column; gap: 12px; }
+.row { display: flex; flex-direction: column; gap: 4px; }
+.row > .lab { display: flex; justify-content: space-between; font-size: 13px; }
+.row > .lab output { font-family: var(--f-mono); font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; }
+.row small { color: var(--muted); font-size: 12px; }
+input[type="range"] { width: 100%; accent-color: var(--accent); }
+select, input[type="number"] { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; width: 100%; }
+.check { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; }
+.check input { accent-color: var(--accent); margin-top: 3px; }
+.seg { display: grid; grid-template-columns: repeat(var(--n, 3), 1fr); gap: 4px; }
+.seg button { border: 1px solid var(--line); background: var(--bg); border-radius: 6px; padding: 7px 4px; cursor: pointer; font-size: 12px; line-height: 1.25; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.spec { font-family: var(--f-mono); font-size: 12px; color: var(--muted); background: var(--bg); border-radius: 6px; padding: 8px 10px; line-height: 1.6; font-variant-numeric: tabular-nums; }
+.btns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.btns .wide { grid-column: 1 / -1; }
+.btn { border: 1px solid var(--line); background: var(--bg); border-radius: 8px; padding: 9px 10px; cursor: pointer; font-weight: 500; text-align: left; }
+.btn b { display: block; }
+.btn small { color: var(--muted); font-weight: 400; font-size: 12px; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.primary small { color: inherit; opacity: .8; }
+.btn:disabled { opacity: .5; cursor: progress; }
+
+.toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 9px 16px; border-radius: 999px; font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .2s; max-width: calc(100% - 32px); text-align: center; z-index: 20; }
+.toast.on { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+</style>
+
+<header class="bar">
+  <div class="brand"><h1>pttern</h1><span id="sizeTag">200 × 200 mm tile</span></div>
+  <div class="tabs" role="tablist">
+    <button role="tab" id="tab-edit" aria-selected="true" data-view="edit">Design</button>
+    <button role="tab" id="tab-prev" aria-selected="false" data-view="prev">Tile preview</button>
+    <button role="tab" id="tab-3d" aria-selected="false" data-view="3d">3D mold</button>
+  </div>
+</header>
+
+<main class="app">
+  <section class="stage">
+    <div class="view" id="viewWrap">
+      <canvas id="cv" aria-label="Pattern drawing area"></canvas>
+      <canvas id="pv" hidden aria-label="Shaded preview of four tiles"></canvas>
+      <div class="three" id="tv" hidden><div class="msg" id="tvmsg">Building 3D model…</div></div>
+    </div>
+    <div class="ruler" id="ruler"><span>0</span><span id="rulerMid">100 mm</span><span id="rulerEnd">200</span></div>
+    <div class="tools" id="tools">
+      <button class="tbtn" data-tool="select" aria-pressed="true" title="Select and move (V)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M5 3l14 8-6 1.5L10 19z"/></svg><span class="lbl">Select</span></button>
+      <button class="tbtn" data-tool="poly" aria-pressed="false" title="Shape: tap points (P)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 18L7 5l10 3 3 10z"/></svg><span class="lbl">Shape</span></button>
+      <button class="tbtn" data-tool="leaf" aria-pressed="false" title="Petal: drag base to tip (L)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21C5 14 5 8 12 3c7 5 7 11 0 18z"/></svg><span class="lbl">Petal</span></button>
+      <button class="tbtn" data-tool="circle" aria-pressed="false" title="Circle: drag from centre (C)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/></svg><span class="lbl">Circle</span></button>
+      <button class="tbtn" data-tool="stroke" aria-pressed="false" title="Line: draw freehand (D)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M3 17c4-9 8 3 12-5s4-5 6-6"/></svg><span class="lbl">Line</span></button>
+      <span class="tsep"></span>
+      <button class="tbtn" id="modeBtn" aria-pressed="false" title="New shapes cut into the relief instead of raising it"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 12h8"/></svg><span class="lbl">Cut</span></button>
+      <button class="tbtn" id="undoBtn" title="Undo (Ctrl+Z)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg><span class="lbl">Undo</span></button>
+      <button class="tbtn" id="redoBtn" title="Redo (Ctrl+Shift+Z)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h3"/></svg><span class="lbl">Redo</span></button>
+    </div>
+    <div class="ctx" id="ctx"></div>
+  </section>
+
+  <aside class="panel">
+    <details open>
+      <summary>Pattern</summary>
+      <div class="body">
+        <div class="row">
+          <div class="lab"><span>Symmetry</span></div>
+          <div class="seg" style="--n:4" id="symSeg">
+            <button data-sym="none">None</button>
+            <button data-sym="mirror">Mirror ×4</button>
+            <button data-sym="rot4">Turn ×4</button>
+            <button data-sym="d4">Kaleido ×8</button>
+          </div>
+          <small>Every design repeats seamlessly across tile edges. Kaleido ×8 matches the classic encaustic layout: draw inside the light wedge.</small>
+        </div>
+        <div class="row">
+          <div class="lab"><label for="in-size">Tile size</label><output>mm</output></div>
+          <input type="number" id="in-size" min="50" max="400" step="5" value="200">
+        </div>
+        <div class="row">
+          <div class="lab"><label for="in-strokeW">Line width</label><output id="o-strokeW"></output></div>
+          <input type="range" id="in-strokeW" data-k="strokeW" min="1" max="15" step="0.5">
+        </div>
+        <div class="row">
+          <div class="lab"><label for="in-snap">Snap to grid</label></div>
+          <select id="in-snap" data-k="snap"><option value="0">Off</option><option value="1">1 mm</option><option value="2.5">2.5 mm</option><option value="5">5 mm</option></select>
+        </div>
+        <div class="btns">
+          <button class="btn" id="sampleBtn"><b>Load sample</b><small>Florentine rosette</small></button>
+          <button class="btn" id="clearBtn"><b>Clear all</b><small>Start blank</small></button>
+        </div>
+      </div>
+    </details>
+
+    <details open>
+      <summary>Relief &amp; mold</summary>
+      <div class="body">
+        <div class="row">
+          <div class="lab"><span>Mold</span></div>
+          <div class="seg" style="--n:3" id="kindSeg">
+            <button data-kind="kit">Detachable<br><small>plate + 4 walls</small></button>
+            <button data-kind="one">One piece<br><small>walls fused</small></button>
+            <button data-kind="plate">Plate only<br><small>no walls</small></button>
+          </div>
+          <small id="kindHint"></small>
+        </div>
+        <div class="row">
+          <div class="lab"><span>Finished tile face</span></div>
+          <div class="seg" style="--n:2" id="modeSeg">
+            <button data-mode="mold">Raised pattern</button>
+            <button data-mode="mold-inv">Engraved pattern</button>
+          </div>
+        </div>
+        <div class="row">
+          <div class="lab"><label for="in-depth">Relief depth</label><output id="o-depth"></output></div>
+          <input type="range" id="in-depth" data-k="depth" min="0.5" max="8" step="0.25">
+        </div>
+        <div class="row">
+          <div class="lab"><label for="in-draft">Draft angle</label><output id="o-draft"></output></div>
+          <input type="range" id="in-draft" data-k="draft" min="0" max="25" step="1">
+          <small>Tapers the sides of the relief so the cement lets go. Built in 0.2 mm steps, the same as print layers.</small>
+        </div>
+        <div class="row">
+          <div class="lab"><label for="in-floor">Plate base thickness</label><output id="o-floor"></output></div>
+          <input type="range" id="in-floor" data-k="floor" min="1.5" max="8" step="0.5">
+        </div>
+        <div class="row wallOnly">
+          <div class="lab"><label for="in-height">Tile thickness</label><output id="o-height"></output></div>
+          <input type="range" id="in-height" data-k="height" min="5" max="40" step="1">
+        </div>
+        <div class="row wallOnly">
+          <div class="lab"><label for="in-wall">Wall thickness</label><output id="o-wall"></output></div>
+          <input type="range" id="in-wall" data-k="wall" min="3" max="12" step="0.5">
+        </div>
+        <div class="row kitOnly">
+          <div class="lab"><label for="in-clear">Joint clearance</label><output id="o-clear"></output></div>
+          <input type="range" id="in-clear" data-k="clear" min="0.1" max="0.6" step="0.05">
+          <small>Gap between the finger joints, and between the plate and the walls.</small>
+        </div>
+        <div class="row kitOnly">
+          <div class="lab"><label for="in-grooves">Cord grooves</label></div>
+          <select id="in-grooves" data-k="grooves"><option value="0">None</option><option value="1">One, at mid-height</option><option value="2">Two</option></select>
+        </div>
+        <label class="check"><input type="checkbox" id="in-mirror" data-k="mirror"> <span>Mirror the pattern so the cast face reads the right way round</span></label>
+        <div class="row">
+          <div class="lab"><label for="in-seg">Curve detail</label></div>
+          <select id="in-seg" data-k="seg"><option value="0.5">Standard · 0.5 mm segments</option><option value="0.2">Fine · 0.2 mm</option><option value="0.1">Ultra · 0.1 mm</option></select>
+        </div>
+        <div class="spec" id="spec"></div>
+      </div>
+    </details>
+
+    <details open>
+      <summary>Export</summary>
+      <div class="body">
+        <div class="btns">
+          <button class="btn primary wide" id="mfBtn"><b>3D model (3MF)</b><small id="mfNote">All parts, for Fusion 360 or your slicer</small></button>
+          <button class="btn wide" id="stlBtn"><b>STL files</b><small id="stlNote">One file per part, zipped</small></button>
+          <button class="btn" id="svgBtn"><b>SVG</b><small>Vector, mm units</small></button>
+          <button class="btn" id="pngBtn"><b>Heightmap</b><small>PNG, 2048 px</small></button>
+          <button class="btn" id="saveBtn"><b>Save project</b><small>.json</small></button>
+          <button class="btn" id="openBtn"><b>Open project</b><small>.json</small></button>
+        </div>
+        <input type="file" id="fileIn" accept=".json,application/json" hidden>
+      </div>
+    </details>
+  </aside>
+</main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/clipper-lib@6.4.2/clipper.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/earcut@2.2.4/dist/earcut.min.js"></script>
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const dpr = () => Math.min(window.devicePixelRatio || 1, 3);
+
+const DEF = { size: 200, sym: "d4", snap: 0, strokeW: 4, newCut: false, depth: 3, draft: 8, mode: "mold", kind: "kit", floor: 3, wall: 6, height: 15, clear: 0.3, grooves: 1, mirror: true, seg: 0.2 };
+let cfg = { ...DEF };
+let shapes = [];
+let sel = null;          // selected shape id
+let tool = "select";
+let draft = null;        // points of a polygon in progress
+let view = "edit";
+let undoStack = [], redoStack = [];
+let nextId = 1;
+
+// GEOM-START
+// ---- symmetry: 2x2 matrices [a,b,c,d] about the tile centre (canvas convention x'=ax+cy, y'=bx+dy)
+const SYM = {
+  none: [[1, 0, 0, 1]],
+  mirror: [[1, 0, 0, 1], [-1, 0, 0, 1], [1, 0, 0, -1], [-1, 0, 0, -1]],
+  rot4: [[1, 0, 0, 1], [0, 1, -1, 0], [-1, 0, 0, -1], [0, -1, 1, 0]],
+  d4: [[1, 0, 0, 1], [0, 1, -1, 0], [-1, 0, 0, -1], [0, -1, 1, 0], [-1, 0, 0, 1], [1, 0, 0, -1], [0, 1, 1, 0], [0, -1, -1, 0]],
+};
+const OFFS = [[0, 0], [-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]];
+function xf(m, ox, oy, S = cfg.size) {
+  const h = S / 2, [a, b, c, d] = m;
+  return [a, b, c, d, h - a * h - c * h + ox, h - b * h - d * h + oy];
+}
+function setXf(ctx, k, x0, y0, t) { ctx.setTransform(k * t[0], k * t[1], k * t[2], k * t[3], k * t[4] + x0, k * t[5] + y0); }
+
+// ---- shape geometry, traced onto any canvas-like path target
+function spline(p, P, closed) {
+  const n = P.length;
+  p.moveTo(P[0][0], P[0][1]);
+  if (n < 3) { for (let i = 1; i < n; i++) p.lineTo(P[i][0], P[i][1]); return; }
+  const g = i => closed ? P[(i + n) % n] : P[Math.max(0, Math.min(n - 1, i))];
+  const segs = closed ? n : n - 1;
+  for (let i = 0; i < segs; i++) {
+    const p0 = g(i - 1), p1 = g(i), p2 = g(i + 1), p3 = g(i + 2);
+    p.bezierCurveTo(p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6, p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6, p2[0], p2[1]);
+  }
+}
+function trace(p, s) {
+  const P = s.pts;
+  if (s.type === "circle") { const [x, y] = P[0]; p.moveTo(x + s.r, y); p.arc(x, y, s.r, 0, Math.PI * 2); p.closePath(); return; }
+  if (s.type === "leaf") {
+    const [b, t] = P, mx = (b[0] + t[0]) / 2, my = (b[1] + t[1]) / 2;
+    const L = Math.hypot(t[0] - b[0], t[1] - b[1]) || 1, nx = -(t[1] - b[1]) / L * s.w, ny = (t[0] - b[0]) / L * s.w;
+    p.moveTo(b[0], b[1]); p.quadraticCurveTo(mx + nx, my + ny, t[0], t[1]); p.quadraticCurveTo(mx - nx, my - ny, b[0], b[1]); p.closePath(); return;
+  }
+  if (s.type === "stroke") { spline(p, P, false); return; }
+  if (s.smooth) spline(p, P, true);
+  else { p.moveTo(P[0][0], P[0][1]); for (let i = 1; i < P.length; i++) p.lineTo(P[i][0], P[i][1]); }
+  p.closePath();
+}
+function svgPath(s) {
+  let d = "";
+  const f = v => +v.toFixed(3);
+  trace({
+    moveTo: (x, y) => d += `M${f(x)} ${f(y)}`,
+    lineTo: (x, y) => d += `L${f(x)} ${f(y)}`,
+    quadraticCurveTo: (a, b, x, y) => d += `Q${f(a)} ${f(b)} ${f(x)} ${f(y)}`,
+    bezierCurveTo: (a, b, c, e, x, y) => d += `C${f(a)} ${f(b)} ${f(c)} ${f(e)} ${f(x)} ${f(y)}`,
+    closePath: () => d += "Z",
+    arc: (x, y, r) => d = `M${f(x - r)} ${f(y)}A${f(r)} ${f(r)} 0 1 0 ${f(x + r)} ${f(y)}A${f(r)} ${f(r)} 0 1 0 ${f(x - r)} ${f(y)}`,
+  }, s);
+  return d;
+}
+
+function paintShapes(ctx, k, x0, y0, style, offs, list = shapes) {
+  const S = cfg.size, mats = SYM[cfg.sym];
+  for (const s of list) {
+    const st = style(s);
+    ctx.globalCompositeOperation = st.op || "source-over";
+    for (const [ox, oy] of offs) for (const m of mats) {
+      setXf(ctx, k, x0, y0, xf(m, ox * S, oy * S));
+      ctx.beginPath(); trace(ctx, s);
+      if (s.type === "stroke") { ctx.lineWidth = s.w; ctx.lineCap = ctx.lineJoin = "round"; ctx.strokeStyle = st.color; ctx.stroke(); }
+      else { ctx.fillStyle = st.color; ctx.fill(); }
+    }
+  }
+  ctx.globalCompositeOperation = "source-over";
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+}
+
+// ---- heightmap: 0..1 per pixel, wraps across tile edges
+const grayOf = lv => { const v = Math.round(255 * lv / 100); return `rgb(${v},${v},${v})`; };
+function renderMask(N) {
+  const c = document.createElement("canvas"); c.width = c.height = N;
+  const x = c.getContext("2d", { willReadFrequently: true });
+  x.fillStyle = "#000"; x.fillRect(0, 0, N, N);
+  paintShapes(x, N / cfg.size, 0, 0, s => s.cut ? { color: "#000" } : { color: grayOf(s.level || 100), op: "lighten" }, OFFS);
+  const d = x.getImageData(0, 0, N, N).data, m = new Float32Array(N * N);
+  for (let i = 0; i < N * N; i++) m[i] = d[i * 4] / 255;
+  return m;
+}
+function boxBlur(src, N, r) {
+  if (r < 1) return src;
+  r = Math.min(r, N >> 2);
+  const a = src.slice(), b = new Float32Array(N * N), w = 2 * r + 1, md = i => ((i % N) + N) % N;
+  for (let pass = 0; pass < 3; pass++) {
+    for (let y = 0; y < N; y++) {
+      const row = y * N; let s = 0;
+      for (let i = -r; i <= r; i++) s += a[row + md(i)];
+      for (let x = 0; x < N; x++) { b[row + x] = s / w; s += a[row + md(x + r + 1)] - a[row + md(x - r)]; }
+    }
+    for (let x = 0; x < N; x++) {
+      let s = 0;
+      for (let i = -r; i <= r; i++) s += b[md(i) * N + x];
+      for (let y = 0; y < N; y++) { a[y * N + x] = s / w; s += b[md(y + r + 1) * N + x] - b[md(y - r) * N + x]; }
+    }
+  }
+  return a;
+}
+function heightMask(N) { return boxBlur(renderMask(N), N, Math.round(cfg.depth * Math.tan(cfg.draft * Math.PI / 180) / (cfg.size / N) / 2)); }
+
+// Vector solids: exact outlines (Clipper booleans + earcut caps), stacked as closed shells.
+// 3D frame: mm, Z up, y up the design. A slicer merges the overlapping shells of one object.
+const SC = 1000;                       // Clipper integer units per mm
+function flatten(s, seg) {
+  const out = []; let cur = null, last = [0, 0];
+  const push = (x, y) => { cur.push([x, y]); last = [x, y]; };
+  const n = L => Math.max(2, Math.ceil(L / seg));
+  trace({
+    moveTo(x, y) { cur = []; out.push(cur); push(x, y); },
+    lineTo(x, y) { push(x, y); },
+    quadraticCurveTo(cx, cy, x, y) {
+      const [x0, y0] = last, k = n(Math.hypot(cx - x0, cy - y0) + Math.hypot(x - cx, y - cy));
+      for (let i = 1; i <= k; i++) { const t = i / k, u = 1 - t; push(u * u * x0 + 2 * u * t * cx + t * t * x, u * u * y0 + 2 * u * t * cy + t * t * y); }
+    },
+    bezierCurveTo(ax, ay, bx, by, x, y) {
+      const [x0, y0] = last, k = n(Math.hypot(ax - x0, ay - y0) + Math.hypot(bx - ax, by - ay) + Math.hypot(x - bx, y - by));
+      for (let i = 1; i <= k; i++) {
+        const t = i / k, u = 1 - t, a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t;
+        push(a * x0 + b * ax + c * bx + d * x, a * y0 + b * ay + c * by + d * y);
+      }
+    },
+    arc(x, y, r) {
+      cur.length = 0;
+      const k = Math.max(32, Math.ceil(2 * Math.PI * r / seg));
+      for (let i = 0; i < k; i++) { const t = i / k * 2 * Math.PI; push(x + r * Math.cos(t), y + r * Math.sin(t)); }
+    },
+    closePath() { },
+  }, s);
+  return out.filter(c => c.length > 1);
+}
+const NZ = () => ClipperLib.PolyFillType.pftNonZero;
+function clipPaths(a, b, type) {
+  const c = new ClipperLib.Clipper(), sol = [];
+  if (a.length) c.AddPaths(a, ClipperLib.PolyType.ptSubject, true);
+  if (b && b.length) c.AddPaths(b, ClipperLib.PolyType.ptClip, true);
+  c.Execute(type, sol, NZ(), NZ());
+  return sol;
+}
+function clipEx(a, b, type) {
+  const c = new ClipperLib.Clipper(), tree = new ClipperLib.PolyTree();
+  if (a.length) c.AddPaths(a, ClipperLib.PolyType.ptSubject, true);
+  if (b && b.length) c.AddPaths(b, ClipperLib.PolyType.ptClip, true);
+  c.Execute(type, tree, NZ(), NZ());
+  return ClipperLib.JS.PolyTreeToExPolygons(tree);
+}
+function offsetPaths(p, d) {
+  const co = new ClipperLib.ClipperOffset(2, 0.01 * SC), sol = [];
+  co.AddPaths(p, ClipperLib.JoinType.jtRound, ClipperLib.EndType.etClosedPolygon);
+  co.Execute(sol, d * SC);
+  return sol;
+}
+// every symmetric + wrapped copy of a shape that touches the tile, as positive-wound Clipper paths
+function shapeCopies(s, S, seg, sym) {
+  const base = flatten(s, seg), out = [], pad = s.type === "stroke" ? s.w : 0;
+  for (const [ox, oy] of OFFS) for (const m of SYM[sym]) {
+    const t = xf(m, ox * S, oy * S, S);
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    const paths = base.map(c => c.map(([x, y]) => {
+      const X = t[0] * x + t[2] * y + t[4], Y = t[1] * x + t[3] * y + t[5];
+      x0 = Math.min(x0, X); x1 = Math.max(x1, X); y0 = Math.min(y0, Y); y1 = Math.max(y1, Y);
+      return { X: Math.round(X * SC), Y: Math.round(Y * SC) };
+    }));
+    if (x1 < -pad || x0 > S + pad || y1 < -pad || y0 > S + pad) continue;
+    if (s.type === "stroke") {
+      const co = new ClipperLib.ClipperOffset(2, 0.01 * SC), sol = [];
+      co.AddPaths(paths, ClipperLib.JoinType.jtRound, ClipperLib.EndType.etOpenRound);
+      co.Execute(sol, s.w / 2 * SC); out.push(...sol);
+    } else for (const p of paths) if (p.length > 2) out.push(ClipperLib.Clipper.Orientation(p) ? p : p.reverse());
+  }
+  return out;
+}
+// region raised to at least each height level, applying raise/cut in drawing order
+function levelRegions(list, sym, S, seg) {
+  const CT = ClipperLib.ClipType, cache = list.map(s => shapeCopies(s, S, seg, sym));
+  const levels = [...new Set(list.filter(s => !s.cut).map(s => s.level || 100))].sort((a, b) => a - b);
+  return levels.map(L => {
+    let r = [];
+    list.forEach((s, i) => {
+      if (s.cut) { if (r.length) r = clipPaths(r, cache[i], CT.ctDifference); }
+      else if ((s.level || 100) >= L) r = clipPaths(r, cache[i], CT.ctUnion);
+    });
+    return { L, r };
+  });
+}
+class Mesh {
+  constructor() { this.a = []; }
+  tri(p, q, r) { this.a.push(p[0], p[1], p[2], q[0], q[1], q[2], r[0], r[1], r[2]); }
+  box(x0, x1, y0, y1, z0, z1) { extrudeLoop(this, [[x0, y0], [x1, y0], [x1, y1], [x0, y1]], [], z0, z1); }
+}
+const ringArea = c => { let s = 0; for (let i = 0, j = c.length - 1; i < c.length; j = i++) s += c[j][0] * c[i][1] - c[i][0] * c[j][1]; return s / 2; };
+function extrudeLoop(m, outer, holes, z0, z1) {
+  if (ringArea(outer) < 0) outer = outer.slice().reverse();
+  holes = holes.map(h => ringArea(h) > 0 ? h.slice().reverse() : h);
+  const rings = [outer, ...holes], flat = [], idx = [], pts = [];
+  for (const c of rings) { if (c !== outer) idx.push(pts.length); for (const p of c) { pts.push(p); flat.push(p[0], p[1]); } }
+  const t = earcut(flat, idx);
+  for (let i = 0; i < t.length; i += 3) {
+    let a = pts[t[i]], b = pts[t[i + 1]], c = pts[t[i + 2]];
+    const cr = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    if (cr === 0) continue;
+    if (cr < 0) [b, c] = [c, b];
+    m.tri([a[0], a[1], z1], [b[0], b[1], z1], [c[0], c[1], z1]);
+    m.tri([a[0], a[1], z0], [c[0], c[1], z0], [b[0], b[1], z0]);
+  }
+  for (const c of rings) for (let i = 0; i < c.length; i++) {
+    const p = c[i], q = c[(i + 1) % c.length];
+    m.tri([p[0], p[1], z0], [q[0], q[1], z0], [q[0], q[1], z1]);
+    m.tri([p[0], p[1], z0], [q[0], q[1], z1], [p[0], p[1], z1]);
+  }
+}
+function extrudeEx(m, ex, map, z0, z1) {
+  const conv = p => ClipperLib.Clipper.CleanPolygon(p, 2).map(map);
+  for (const e of ex) {
+    const outer = conv(e.outer);
+    if (outer.length < 3) continue;
+    extrudeLoop(m, outer, e.holes.map(conv).filter(h => h.length > 2), z0, z1);
+  }
+}
+// o: {S, D, B, W, T, mode, kind, mirror, draft, seg, step, clear, grooves, sym}
+function buildPlate(list, o) {
+  const CT = ClipperLib.ClipType, m = new Mesh(), S = o.S, E = 0.02;
+  const regs = levelRegions(list, o.sym, S, o.seg), tan = Math.tan(o.draft * Math.PI / 180);
+  const sq = [[{ X: 0, Y: 0 }, { X: S * SC, Y: 0 }, { X: S * SC, Y: S * SC }, { X: 0, Y: S * SC }]];
+  const map = p => [o.mirror ? S - p.X / SC : p.X / SC, S - p.Y / SC];
+  const raised = o.mode !== "mold";   // "mold": pattern is a pocket, so the cast tile is raised
+  const lmax = regs.length ? regs[regs.length - 1].L : 0;
+  m.box(0, S, 0, S, 0, raised ? o.B : o.B + o.D * (1 - lmax / 100));
+  let prev = 0;
+  for (const { L, r } of regs) {
+    const lo = prev / 100, hi = L / 100; prev = L;
+    const zb = raised ? o.B + o.D * lo : o.B + o.D * (1 - hi), zt = raised ? o.B + o.D * hi : o.B + o.D * (1 - lo);
+    const n = tan > 0 ? Math.max(1, Math.ceil((zt - zb) / o.step - 1e-6)) : 1;
+    for (let i = 0; i < n; i++) {
+      const z0 = zb + (zt - zb) * i / n, z1 = zb + (zt - zb) * (i + 1) / n;
+      // the cast face keeps the drawn outline; the relief narrows away from it
+      const d = raised ? (z0 - o.B) * tan : (o.B + o.D - z1) * tan;
+      const reg = d > 1e-4 ? offsetPaths(r, -d) : r;
+      const ex = raised ? clipEx(reg, sq, CT.ctIntersection) : clipEx(sq, reg, CT.ctDifference);
+      extrudeEx(m, ex, map, z0 - E, z1);
+    }
+  }
+  return m;
+}
+function addFusedWalls(m, o) {
+  const S = o.S, W = o.W, H = o.B + o.D + o.T, E = 0.02;
+  m.box(-W, E, -W, S + W, 0, H); m.box(S - E, S + W, -W, S + W, 0, H);
+  m.box(0, S, -W, E, 0, H); m.box(0, S, S - E, S + W, 0, H);
+}
+function wallInfo(o) {
+  const I = o.S + 2 * o.clear, L = I + 2 * o.W, H = o.B + o.D + o.T;
+  return { I, L, H, F: Math.max(3, 2 * Math.round((H / 7 - 1) / 2) + 1) };
+}
+// One frame wall in local coords: x along its length, y from outer face (0) to inner face (W), z up.
+// All four walls are identical: the left end carries the even finger slots, the right end the odd
+// ones, so each corner interlocks. Walls slide on from outside; a cord in the groove clamps them.
+function buildWall(o) {
+  const m = new Mesh(), { I, L, H, F } = wallInfo(o), W = o.W, g = o.clear, E = 0.02;
+  const gw = Math.min(3, H / 6), gd = Math.min(1.5, W / 3);
+  const bands = (o.grooves == 2 ? [H / 3, 2 * H / 3] : o.grooves == 1 ? [H / 2] : []).map(z => [z - gw / 2, z + gw / 2]);
+  const piece = (x0, x1, y0, y1, z0, z1, end) => {
+    const cuts = [z0, z1];
+    for (const b of bands) for (const z of b) if (z > z0 && z < z1) cuts.push(z);
+    cuts.sort((a, b) => a - b);
+    for (let i = 0; i < cuts.length - 1; i++) {
+      const a = cuts[i] - (i ? E : 0), b = cuts[i + 1], mid = (cuts[i] + b) / 2, inG = bands.some(([p, q]) => mid > p && mid < q);
+      m.box(inG && end === "L" ? x0 + gd : x0, inG && end === "R" ? x1 - gd : x1, inG ? y0 + gd : y0, y1, a, b);
+    }
+  };
+  piece(W, W + I, 0, W, 0, H, null);
+  for (let j = 0; j < F; j++) {
+    const z0 = j * H / F + (j ? g / 2 : 0), z1 = (j + 1) * H / F - (j < F - 1 ? g / 2 : 0);
+    if (j % 2 === 0) piece(0, W + E, 0, W - g, z0, z1, "L");
+    else piece(W + I - E, L, 0, W - g, z0, z1, "R");
+  }
+  return m;
+}
+function mapPos(a, f) {
+  const out = new Float32Array(a.length);
+  for (let i = 0; i < a.length; i += 3) { const p = f(a[i], a[i + 1], a[i + 2]); out[i] = p[0]; out[i + 1] = p[1]; out[i + 2] = p[2]; }
+  return out;
+}
+const wallPrint = o => { const H = wallInfo(o).H; return (x, y, z) => [x, H - z, y]; };   // outer face down: fingers sit on the bed
+const wallAssembly = (o, k, gap) => (x, y, z) => {             // wall k around the plate, turned 90° per k
+  const h = o.S / 2;
+  let px = x - o.W - o.clear, py = y - o.W - o.clear - gap;
+  for (let i = 0; i < k; i++) [px, py] = [h - (py - h), h + (px - h)];
+  return [px, py, z];
+};
+function buildAll(list, o) {
+  const pm = buildPlate(list, o);
+  if (o.kind === "one") addFusedWalls(pm, o);
+  return { plate: new Float32Array(pm.a), wall: o.kind === "kit" ? new Float32Array(buildWall(o).a) : null };
+}
+function to3MF(objs) {
+  const out = ['<?xml version="1.0" encoding="UTF-8"?>\n<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">\n<metadata name="Application">pttern</metadata>\n<resources>\n'];
+  objs.forEach((o, n) => {
+    const idx = new Map(), verts = [], tris = [], p = o.pos, r = v => Math.round(v * 1e4) / 1e4 + 0;
+    const vid = (x, y, z) => {
+      const k = `${r(x)} ${r(y)} ${r(z)}`;
+      let i = idx.get(k);
+      if (i === undefined) { i = verts.length; idx.set(k, i); verts.push(k); }
+      return i;
+    };
+    for (let i = 0; i < p.length; i += 9) {
+      const a = vid(p[i], p[i + 1], p[i + 2]), b = vid(p[i + 3], p[i + 4], p[i + 5]), c = vid(p[i + 6], p[i + 7], p[i + 8]);
+      if (a !== b && b !== c && a !== c) tris.push(`<triangle v1="${a}" v2="${b}" v3="${c}"/>`);
+    }
+    out.push(`<object id="${n + 1}" name="${o.name}" type="model"><mesh><vertices>\n`,
+      verts.map(k => { const [x, y, z] = k.split(" "); return `<vertex x="${x}" y="${y}" z="${z}"/>`; }).join("\n"),
+      "\n</vertices><triangles>\n", tris.join("\n"), "\n</triangles></mesh></object>\n");
+  });
+  out.push("</resources>\n<build>\n", objs.map((o, n) => `<item objectid="${n + 1}" transform="1 0 0 0 1 0 0 0 1 ${o.tx || 0} ${o.ty || 0} 0"/>`).join("\n"), "\n</build>\n</model>\n");
+  return out.join("");
+}
+const MF_TYPES = '<?xml version="1.0" encoding="UTF-8"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>';
+const MF_RELS = '<?xml version="1.0" encoding="UTF-8"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>';
+async function build3MF(objs) {
+  return zipFiles([{ name: "[Content_Types].xml", data: MF_TYPES }, { name: "_rels/.rels", data: MF_RELS }, { name: "3D/3dmodel.model", data: to3MF(objs) }]);
+}
+function toSTL(pos, name) {
+  const nt = pos.length / 9, buf = new ArrayBuffer(84 + nt * 50), dv = new DataView(buf);
+  for (let i = 0; i < Math.min(80, name.length); i++) dv.setUint8(i, name.charCodeAt(i) & 127);
+  dv.setUint32(80, nt, true);
+  let o = 84;
+  for (let t = 0; t < nt; t++) {
+    const b = t * 9;
+    const ux = pos[b + 3] - pos[b], uy = pos[b + 4] - pos[b + 1], uz = pos[b + 5] - pos[b + 2];
+    const vx = pos[b + 6] - pos[b], vy = pos[b + 7] - pos[b + 1], vz = pos[b + 8] - pos[b + 2];
+    let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    const l = Math.hypot(nx, ny, nz) || 1;
+    dv.setFloat32(o, nx / l, true); dv.setFloat32(o + 4, ny / l, true); dv.setFloat32(o + 8, nz / l, true); o += 12;
+    for (let k = 0; k < 9; k++, o += 4) dv.setFloat32(o, pos[b + k], true);
+    o += 2;
+  }
+  return buf;
+}
+// ---- zip writer (deflate when the browser can, otherwise stored); also the 3MF container
+const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+async function zipFiles(files) {
+  const enc = new TextEncoder(), parts = [], central = [];
+  let off = 0, csize = 0;
+  for (const f of files) {
+    const raw = typeof f.data === "string" ? enc.encode(f.data) : new Uint8Array(f.data instanceof Blob ? await f.data.arrayBuffer() : f.data);
+    let c = 0xFFFFFFFF; for (let i = 0; i < raw.length; i++) c = CRC[(c ^ raw[i]) & 255] ^ (c >>> 8); c = (c ^ 0xFFFFFFFF) >>> 0;
+    let body = raw, method = 0;
+    if (f.deflate !== false && typeof CompressionStream !== "undefined") {
+      try { body = new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new CompressionStream("deflate-raw"))).arrayBuffer()); method = 8; }
+      catch (e) { body = raw; method = 0; }
+    }
+    const nm = enc.encode(f.name), lh = new DataView(new ArrayBuffer(30)), ch = new DataView(new ArrayBuffer(46)), date = (46 << 9) | (1 << 5) | 1;
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(8, method, true); lh.setUint16(12, date, true);
+    lh.setUint32(14, c, true); lh.setUint32(18, body.length, true); lh.setUint32(22, raw.length, true); lh.setUint16(26, nm.length, true);
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(10, method, true); ch.setUint16(14, date, true);
+    ch.setUint32(16, c, true); ch.setUint32(20, body.length, true); ch.setUint32(24, raw.length, true); ch.setUint16(28, nm.length, true); ch.setUint32(42, off, true);
+    parts.push(lh, nm, body); central.push(ch, nm);
+    off += 30 + nm.length + body.length; csize += 46 + nm.length;
+  }
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true); end.setUint32(12, csize, true); end.setUint32(16, off, true);
+  return new Blob([...parts, ...central, end], { type: "application/zip" });
+}
+// GEOM-END
+
+function geomOpts(preview) {
+  return { S: cfg.size, D: cfg.depth, B: cfg.floor, W: cfg.wall, T: cfg.height, mode: cfg.mode, kind: cfg.kind, mirror: cfg.mirror, draft: cfg.draft,
+    seg: preview ? 0.6 : cfg.seg, step: preview ? 0.5 : 0.2, clear: cfg.clear, grooves: cfg.grooves, sym: cfg.sym };
+}
+const geomReady = () => !!(window.ClipperLib && window.earcut);
+
+// ---- saving files: claude.ai viewer capability when present, plain download otherwise
+let dlPromise = null;
+function getDownloads() {
+  if (!window.claude || !window.claude.use) return Promise.resolve(null);
+  return dlPromise || (dlPromise = window.claude.use("downloads").catch(() => null));
+}
+const inViewer = () => !!(window.claude && window.claude.use);
+async function offerFile(filename, data) {
+  const dl = await getDownloads();
+  if (dl) {
+    try { await dl.save({ filename, data }); toast(`Saved ${filename}`); }
+    catch (e) { toast(e && e.code === "declined" ? "Save cancelled" : `Couldn't save ${filename} here`); }
+    return;
+  }
+  if (inViewer()) { toast("Saving files isn't available in this view"); return; }
+  const url = URL.createObjectURL(data instanceof Blob ? data : new Blob([data]));
+  const a = document.createElement("a"); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  toast(`Saved ${filename}`);
+}
+
+// ---- persistence & history
+function persist() { try { localStorage.setItem("pttern.v1", JSON.stringify({ cfg, shapes })); } catch (e) { } }
+function snapshot() { undoStack.push(JSON.stringify(shapes)); if (undoStack.length > 120) undoStack.shift(); redoStack = []; syncHistory(); }
+function undo() { if (!undoStack.length) return; redoStack.push(JSON.stringify(shapes)); shapes = JSON.parse(undoStack.pop()); sel = null; changed(true); }
+function redo() { if (!redoStack.length) return; undoStack.push(JSON.stringify(shapes)); shapes = JSON.parse(redoStack.pop()); sel = null; changed(true); }
+function syncHistory() { $("#undoBtn").disabled = !undoStack.length; $("#redoBtn").disabled = !redoStack.length; }
+function reid() { nextId = 1 + shapes.reduce((m, s) => Math.max(m, s.id || 0), 0); shapes.forEach(s => { if (!s.id) s.id = nextId++; }); }
+function changed(rebuildCtx) { persist(); draw(); syncHistory(); if (rebuildCtx) renderCtx(); dirty3D = true; if (view !== "edit") schedulePreview(); }
+
+// ---- sample: a Florentine-style rosette, drawn in one wedge and mirrored ×8
+function sample() {
+  const arc = [];
+  for (let a = 8; a <= 82; a += 6) { const t = a * Math.PI / 180; arc.push([58 * Math.cos(t), 58 * Math.sin(t)]); }
+  const S = cfg.size / 200, sc = p => [p[0] * S, p[1] * S];
+  const list = [
+    { type: "leaf", pts: [[100, 94], [100, 38]], w: 28 },
+    { type: "leaf", pts: [[96, 96], [68, 68]], w: 18 },
+    { type: "circle", pts: [[100, 100]], r: 10 },
+    { type: "circle", pts: [[100, 100]], r: 4, cut: true },
+    { type: "poly", smooth: true, pts: [[100, 3], [111, 13], [107, 26], [100, 21], [93, 26], [89, 13]] },
+    { type: "leaf", pts: [[0, 0], [36, 36]], w: 26 },
+    { type: "circle", pts: [[0, 0]], r: 7, cut: true },
+    { type: "stroke", pts: arc, w: 4.5 },
+    { type: "poly", pts: [[60, 10], [67, 18], [60, 26], [53, 18]] },
+    { type: "leaf", pts: [[100, 38], [100, 50]], w: 5, cut: true },
+  ];
+  return list.map(s => ({ level: 100, cut: false, smooth: false, ...s, pts: s.pts.map(sc), r: s.r ? s.r * S : undefined, w: s.w ? s.w * S : undefined }));
+}
+
+// ---- canvas & view mapping
+const cv = $("#cv"), ctx = cv.getContext("2d");
+const MARGIN = 0.08;
+let K = 1, X0 = 0;
+function sizeCanvases() {
+  const w = $("#viewWrap").clientWidth, px = Math.round(w * dpr());
+  for (const c of [cv, $("#pv")]) if (c.width !== px) { c.width = c.height = px; }
+  K = px / (cfg.size * (1 + 2 * MARGIN)); X0 = cfg.size * MARGIN * K;
+  draw(); if (view === "prev") drawPreview(); if (three) three.resize();
+}
+function toDesign(e) {
+  const r = cv.getBoundingClientRect(), s = cv.width / r.width;
+  return [((e.clientX - r.left) * s - X0) / K, ((e.clientY - r.top) * s - X0) / K];
+}
+const tok = () => { const cs = getComputedStyle(document.documentElement); const g = n => cs.getPropertyValue(n).trim(); return { field: g("--field"), raised: g("--raised"), outside: g("--outside"), accent: g("--accent"), ink: g("--ink"), muted: g("--muted"), bg: g("--bg") }; };
+function mixHex(a, b, t) {
+  const p = h => { h = h.replace("#", ""); return [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16)); };
+  const A = p(a), B = p(b); return `rgb(${A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(",")})`;
+}
+
+function draw() {
+  const T = tok(), S = cfg.size, W = cv.width, h = S / 2;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = T.field; ctx.fillRect(0, 0, W, W);
+  paintShapes(ctx, K, X0, X0, s => ({ color: s.cut ? T.field : mixHex(T.field, T.raised, (s.level || 100) / 100) }), OFFS);
+  // dim the neighbouring tiles
+  ctx.fillStyle = T.outside; ctx.globalAlpha = 0.62;
+  ctx.beginPath(); ctx.rect(0, 0, W, W); ctx.rect(X0, X0, S * K, S * K); ctx.fill("evenodd");
+  ctx.globalAlpha = 1;
+  const D = (x, y) => [X0 + x * K, X0 + y * K];
+  // symmetry guides
+  ctx.save(); ctx.strokeStyle = T.accent; ctx.globalAlpha = 0.35; ctx.lineWidth = dpr(); ctx.setLineDash([4 * dpr(), 4 * dpr()]);
+  const line = (a, b, c, d) => { ctx.beginPath(); ctx.moveTo(...D(a, b)); ctx.lineTo(...D(c, d)); ctx.stroke(); };
+  if (cfg.sym === "mirror" || cfg.sym === "d4") { line(h, 0, h, S); line(0, h, S, h); }
+  if (cfg.sym === "d4") { line(0, 0, S, S); line(S, 0, 0, S); }
+  ctx.restore();
+  if (cfg.sym === "d4") { ctx.fillStyle = T.accent; ctx.globalAlpha = 0.08; ctx.beginPath(); ctx.moveTo(...D(h, h)); ctx.lineTo(...D(h, 0)); ctx.lineTo(...D(0, 0)); ctx.fill(); ctx.globalAlpha = 1; }
+  if (cfg.sym === "rot4") { ctx.fillStyle = T.accent; ctx.beginPath(); ctx.arc(...D(h, h), 3 * dpr(), 0, 7); ctx.fill(); }
+  // snap grid dots
+  if (cfg.snap) {
+    const st = cfg.snap * Math.max(1, Math.ceil(6 * dpr() / (cfg.snap * K)));
+    ctx.fillStyle = T.muted; ctx.globalAlpha = 0.35;
+    for (let x = 0; x <= S + 1e-6; x += st) for (let y = 0; y <= S + 1e-6; y += st) { const [a, b] = D(x, y); ctx.fillRect(a - dpr() / 2, b - dpr() / 2, dpr(), dpr()); }
+    ctx.globalAlpha = 1;
+  }
+  ctx.strokeStyle = T.ink; ctx.globalAlpha = 0.5; ctx.lineWidth = dpr(); ctx.strokeRect(X0, X0, S * K, S * K); ctx.globalAlpha = 1;
+  // selection
+  const s = shapes.find(q => q.id === sel);
+  if (s) {
+    setXf(ctx, K, X0, X0, [1, 0, 0, 1, 0, 0]); ctx.beginPath(); trace(ctx, s); ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.strokeStyle = T.accent; ctx.lineWidth = 2 * dpr(); ctx.setLineDash([]); ctx.stroke();
+    for (const [x, y] of handles(s)) { ctx.beginPath(); ctx.arc(...D(x, y), 6 * dpr(), 0, 7); ctx.fillStyle = T.bg; ctx.fill(); ctx.lineWidth = 2 * dpr(); ctx.stroke(); }
+  }
+  // polygon in progress
+  if (draft && draft.length) {
+    ctx.strokeStyle = T.accent; ctx.lineWidth = 2 * dpr(); ctx.setLineDash([6 * dpr(), 4 * dpr()]);
+    ctx.beginPath(); draft.forEach((p, i) => i ? ctx.lineTo(...D(...p)) : ctx.moveTo(...D(...p))); ctx.stroke(); ctx.setLineDash([]);
+    draft.forEach((p, i) => { ctx.beginPath(); ctx.arc(...D(...p), (i ? 4 : 8) * dpr(), 0, 7); ctx.fillStyle = i ? T.accent : T.bg; ctx.fill(); ctx.stroke(); });
+  }
+}
+function handles(s) {
+  if (s.type === "circle") return [s.pts[0], [s.pts[0][0] + s.r, s.pts[0][1]]];
+  if (s.type === "stroke") return [];
+  return s.pts;
+}
+
+// ---- hit testing (any symmetric copy selects its source shape)
+const hitCtx = document.createElement("canvas").getContext("2d");
+function hitTest(p, tol) {
+  const mats = SYM[cfg.sym];
+  for (let i = shapes.length - 1; i >= 0; i--) {
+    const s = shapes[i];
+    for (const m of mats) {
+      const t = xf(m, 0, 0);
+      hitCtx.setTransform(...t); hitCtx.beginPath(); trace(hitCtx, s);
+      hitCtx.setTransform(1, 0, 0, 1, 0, 0);
+      hitCtx.lineWidth = s.type === "stroke" ? Math.max(s.w, tol * 2) : tol;
+      if ((s.type !== "stroke" && hitCtx.isPointInPath(p[0], p[1])) || hitCtx.isPointInStroke(p[0], p[1])) return { s, m };
+    }
+  }
+  return null;
+}
+const snapPt = p => cfg.snap ? p.map(v => Math.round(v / cfg.snap) * cfg.snap) : p;
+const newShape = o => ({ id: nextId++, level: 100, cut: cfg.newCut, smooth: false, ...o });
+
+// ---- pointer interaction
+let drag = null;
+cv.addEventListener("pointerdown", e => {
+  if (drag || !e.isPrimary) return;
+  cv.setPointerCapture(e.pointerId);
+  const p = toDesign(e), tol = 12 * dpr() / K;
+  if (tool === "select") {
+    const s = shapes.find(q => q.id === sel);
+    if (s) {
+      const hs = handles(s), hi = hs.findIndex(h => Math.hypot(h[0] - p[0], h[1] - p[1]) < tol * 1.2);
+      if (hi >= 0) { drag = { kind: "handle", s, hi, pushed: false }; return; }
+    }
+    const hit = hitTest(p, tol);
+    const prev = sel;
+    sel = hit ? hit.s.id : null;
+    if (hit) drag = { kind: "move", s: hit.s, m: hit.m, last: p, pushed: false };
+    if (prev !== sel) renderCtx();
+    draw();
+  } else if (tool === "poly") {
+    const q = snapPt(p);
+    if (!draft) draft = [];
+    if (draft.length >= 3 && Math.hypot(draft[0][0] - p[0], draft[0][1] - p[1]) < tol * 1.5) { finishPoly(); return; }
+    draft.push(q); renderCtx(); draw();
+  } else {
+    snapshot();
+    const q = snapPt(p);
+    let s;
+    if (tool === "circle") s = newShape({ type: "circle", pts: [q], r: 0 });
+    if (tool === "leaf") s = newShape({ type: "leaf", pts: [q, q.slice()], w: 0 });
+    if (tool === "stroke") s = newShape({ type: "stroke", pts: [p], w: cfg.strokeW });
+    shapes.push(s); sel = s.id;
+    drag = { kind: "create", s };
+    draw();
+  }
+});
+cv.addEventListener("pointermove", e => {
+  if (!drag || !e.isPrimary) return;
+  const p = toDesign(e), s = drag.s;
+  if (drag.kind === "move" || drag.kind === "handle") {
+    if (!drag.pushed) { snapshot(); drag.pushed = true; }
+  }
+  if (drag.kind === "move") {
+    const dx = p[0] - drag.last[0], dy = p[1] - drag.last[1], [a, b, c, d] = drag.m;
+    const lx = a * dx + b * dy, ly = c * dx + d * dy;   // inverse of an orthogonal matrix is its transpose
+    s.pts.forEach(q => { q[0] += lx; q[1] += ly; });
+    drag.last = p;
+  } else if (drag.kind === "handle") {
+    if (s.type === "circle" && drag.hi === 1) s.r = Math.max(0.5, Math.hypot(p[0] - s.pts[0][0], p[1] - s.pts[0][1]));
+    else { const q = snapPt(p); s.pts[drag.hi][0] = q[0]; s.pts[drag.hi][1] = q[1]; }
+  } else if (drag.kind === "create") {
+    if (s.type === "circle") s.r = Math.hypot(p[0] - s.pts[0][0], p[1] - s.pts[0][1]);
+    if (s.type === "leaf") { const q = snapPt(p); s.pts[1] = q; s.w = Math.hypot(q[0] - s.pts[0][0], q[1] - s.pts[0][1]) * 0.45; }
+    if (s.type === "stroke") { const l = s.pts[s.pts.length - 1]; if (Math.hypot(p[0] - l[0], p[1] - l[1]) > 1.5) s.pts.push(p); }
+  }
+  draw();
+});
+function endDrag(e) {
+  if (!drag || (e && !e.isPrimary)) return;
+  const d = drag; drag = null;
+  if (d.kind === "create") {
+    const s = d.s;
+    const tiny = (s.type === "circle" && s.r < 1) || (s.type === "leaf" && s.w < 0.5) || (s.type === "stroke" && s.pts.length < 2);
+    if (tiny) { shapes.pop(); undoStack.pop(); sel = null; draw(); renderCtx(); syncHistory(); return; }
+    if (s.type === "stroke") s.pts = simplify(s.pts, 0.35);
+    changed(true); return;
+  }
+  if (d.pushed) changed(false);
+}
+cv.addEventListener("pointerup", endDrag);
+cv.addEventListener("pointercancel", endDrag);
+
+function simplify(pts, eps) {   // Ramer–Douglas–Peucker
+  if (pts.length < 3) return pts;
+  const [a, b] = [pts[0], pts[pts.length - 1]];
+  let mi = 0, md = 0;
+  const L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const d = Math.abs((b[0] - a[0]) * (a[1] - pts[i][1]) - (a[0] - pts[i][0]) * (b[1] - a[1])) / L;
+    if (d > md) { md = d; mi = i; }
+  }
+  if (md <= eps) return [a, b];
+  return simplify(pts.slice(0, mi + 1), eps).slice(0, -1).concat(simplify(pts.slice(mi), eps));
+}
+function finishPoly() {
+  if (draft && draft.length >= 3) { snapshot(); const s = newShape({ type: "poly", pts: draft, smooth: false }); shapes.push(s); sel = s.id; draft = null; changed(true); }
+  else { draft = null; renderCtx(); draw(); }
+}
+
+// ---- tools & selection bar
+function setTool(t) {
+  if (draft && t !== "poly") finishPoly();
+  tool = t;
+  $$("[data-tool]").forEach(b => b.setAttribute("aria-pressed", b.dataset.tool === t));
+  cv.style.cursor = t === "select" ? "default" : "crosshair";
+  renderCtx(); draw();
+}
+$$("[data-tool]").forEach(b => b.addEventListener("click", () => setTool(b.dataset.tool)));
+$("#modeBtn").addEventListener("click", () => { cfg.newCut = !cfg.newCut; syncMode(); persist(); });
+function syncMode() { $("#modeBtn").setAttribute("aria-pressed", cfg.newCut); }
+$("#undoBtn").addEventListener("click", undo);
+$("#redoBtn").addEventListener("click", redo);
+
+const HINTS = {
+  select: "Tap a shape (or any of its mirrored copies) to select it. Drag to move, drag the dots to reshape.",
+  poly: "Tap to place corners. Tap the first corner again, or press Finish, to close the shape.",
+  leaf: "Drag from the base of a petal to its tip.",
+  circle: "Drag from the centre outwards.",
+  stroke: "Draw a line with your finger or mouse.",
+};
+function renderCtx() {
+  const el = $("#ctx"), s = shapes.find(q => q.id === sel);
+  if (tool === "poly" && draft) {
+    el.innerHTML = `<span class="hint">${draft.length} corner${draft.length === 1 ? "" : "s"} placed</span>
+      <button class="mini primary" id="c-fin" ${draft.length < 3 ? "disabled" : ""}>Finish shape</button>
+      <button class="mini" id="c-cancel">Cancel</button>`;
+    $("#c-fin").onclick = finishPoly;
+    $("#c-cancel").onclick = () => { draft = null; renderCtx(); draw(); };
+    return;
+  }
+  if (!s) { el.innerHTML = `<span class="hint">${HINTS[tool]}</span>`; return; }
+  const names = { poly: "Shape", leaf: "Petal", circle: "Circle", stroke: "Line" };
+  el.innerHTML = `
+    <div class="grp"><b>${names[s.type]}</b></div>
+    <div class="grp"><button class="mini" id="c-add" aria-pressed="${!s.cut}">Raise</button><button class="mini" id="c-cut" aria-pressed="${!!s.cut}">Cut</button></div>
+    <div class="grp"><label for="c-lv">Height</label><select id="c-lv" style="width:auto">${[25, 50, 75, 100].map(v => `<option value="${v}" ${v === (s.level || 100) ? "selected" : ""}>${v}%</option>`).join("")}</select></div>
+    ${s.type === "stroke" || s.type === "leaf" ? `<div class="grp"><label for="c-w">Width</label><input type="range" id="c-w" min="0.5" max="${s.type === "leaf" ? 60 : 20}" step="0.5" value="${s.w}" style="width:110px"></div>` : ""}
+    ${s.type === "poly" ? `<div class="grp"><button class="mini" id="c-sm" aria-pressed="${!!s.smooth}">Smooth curves</button></div>` : ""}
+    <div class="grp"><button class="mini" id="c-rl" title="Rotate left 15°">⟲</button><button class="mini" id="c-rr" title="Rotate right 15°">⟳</button><button class="mini" id="c-sd" title="Shrink 10%">−</button><button class="mini" id="c-su" title="Grow 10%">+</button></div>
+    <div class="grp"><button class="mini" id="c-dup">Duplicate</button><button class="mini" id="c-up" title="Bring to front">Front</button><button class="mini" id="c-dn" title="Send to back">Back</button><button class="mini danger" id="c-del">Delete</button></div>`;
+  const edit = fn => () => { snapshot(); fn(); changed(true); };
+  $("#c-add").onclick = edit(() => s.cut = false);
+  $("#c-cut").onclick = edit(() => s.cut = true);
+  $("#c-lv").onchange = edit(() => s.level = +$("#c-lv").value);
+  if ($("#c-w")) { let pushed = false; $("#c-w").oninput = () => { if (!pushed) { snapshot(); pushed = true; } s.w = +$("#c-w").value; draw(); }; $("#c-w").onchange = () => { pushed = false; changed(false); }; }
+  if ($("#c-sm")) $("#c-sm").onclick = edit(() => s.smooth = !s.smooth);
+  const xform = (rot, sc) => edit(() => transformShape(s, rot, sc));
+  $("#c-rl").onclick = xform(-15, 1); $("#c-rr").onclick = xform(15, 1);
+  $("#c-sd").onclick = xform(0, 0.9); $("#c-su").onclick = xform(0, 1.1);
+  $("#c-dup").onclick = edit(() => { const c = JSON.parse(JSON.stringify(s)); c.id = nextId++; c.pts.forEach(p => { p[0] += 6; p[1] += 6; }); shapes.push(c); sel = c.id; });
+  $("#c-up").onclick = edit(() => { shapes = shapes.filter(q => q !== s).concat(s); });
+  $("#c-dn").onclick = edit(() => { shapes = [s].concat(shapes.filter(q => q !== s)); });
+  $("#c-del").onclick = edit(() => { shapes = shapes.filter(q => q !== s); sel = null; });
+}
+function transformShape(s, deg, sc) {
+  const n = s.pts.length, cx = s.pts.reduce((a, p) => a + p[0], 0) / n, cy = s.pts.reduce((a, p) => a + p[1], 0) / n;
+  const t = deg * Math.PI / 180, co = Math.cos(t) * sc, si = Math.sin(t) * sc;
+  s.pts = s.pts.map(([x, y]) => [cx + (x - cx) * co - (y - cy) * si, cy + (x - cx) * si + (y - cy) * co]);
+  if (s.r) s.r *= sc;
+  if (s.w && s.type === "leaf") s.w *= sc;
+}
+
+document.addEventListener("keydown", e => {
+  if (/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+  const mod = e.ctrlKey || e.metaKey;
+  if (mod && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if (mod) return;
+  if ((e.key === "Delete" || e.key === "Backspace") && sel) { e.preventDefault(); snapshot(); shapes = shapes.filter(q => q.id !== sel); sel = null; changed(true); }
+  else if (e.key === "Enter" && draft) finishPoly();
+  else if (e.key === "Escape") { draft = null; sel = null; renderCtx(); draw(); }
+  else { const t = { v: "select", p: "poly", l: "leaf", c: "circle", d: "stroke" }[e.key.toLowerCase()]; if (t) setTool(t); }
+});
+
+// ---- settings panel
+const fmt = { strokeW: v => `${v} mm`, depth: v => `${v} mm`, draft: v => v ? `${v}°` : "straight", floor: v => `${v} mm`, wall: v => `${v} mm`, height: v => `${v} mm`, clear: v => `${v} mm` };
+const KIND_HINT = {
+  kit: "A loose pattern plate inside four identical walls with finger joints. Push the walls on from outside, tie a cord in the groove to clamp them, and untie it to release the tile.",
+  one: "Plate and walls printed as a single piece.",
+  plate: "Just the pattern plate. Use it as a stamp, or set it inside your own frame.",
+};
+function syncPanel() {
+  $$("[data-k]").forEach(el => {
+    const k = el.dataset.k;
+    if (el.type === "checkbox") el.checked = !!cfg[k]; else el.value = cfg[k];
+    const o = $("#o-" + k); if (o) o.textContent = fmt[k](cfg[k]);
+  });
+  $("#in-size").value = cfg.size;
+  $$("#symSeg button").forEach(b => b.setAttribute("aria-pressed", b.dataset.sym === cfg.sym));
+  $$("#modeSeg button").forEach(b => b.setAttribute("aria-pressed", b.dataset.mode === cfg.mode));
+  $$("#kindSeg button").forEach(b => b.setAttribute("aria-pressed", b.dataset.kind === cfg.kind));
+  $$(".wallOnly").forEach(el => el.hidden = cfg.kind === "plate");
+  $$(".kitOnly").forEach(el => el.hidden = cfg.kind !== "kit");
+  $("#kindHint").textContent = KIND_HINT[cfg.kind];
+  $("#sizeTag").textContent = `${cfg.size} × ${cfg.size} mm tile`;
+  $("#rulerMid").textContent = `${cfg.size / 2} mm`; $("#rulerEnd").textContent = cfg.size;
+  syncMode(); spec();
+}
+function spec() {
+  const S = cfg.size, plateH = cfg.floor + cfg.depth, lines = [];
+  if (cfg.kind === "kit") {
+    const w = wallInfo(geomOpts(true));
+    lines.push(`Plate ${S} × ${S} × ${f1(plateH)} mm`, `Walls ×4 ${f1(w.L)} × ${f1(w.H)} × ${cfg.wall} mm, printed lying flat`, `${w.F} fingers per corner · cavity ${f1(w.I)} mm`, `Needs a print bed of ${Math.ceil(Math.max(S, w.L))} mm or more`);
+  } else if (cfg.kind === "one") {
+    lines.push(`Mold ${f1(S + 2 * cfg.wall)} × ${f1(S + 2 * cfg.wall)} × ${f1(plateH + cfg.height)} mm`, `Cavity ${S} × ${S} × ${cfg.height} mm`);
+  } else lines.push(`Plate ${S} × ${S} × ${f1(plateH)} mm`);
+  const step = cfg.draft ? cfg.depth * Math.tan(cfg.draft * Math.PI / 180) : 0;
+  lines.push(`Relief ${cfg.depth} mm${step ? `, sides taper ${f1(step)} mm` : ", straight sides"}`);
+  $("#spec").innerHTML = lines.join("<br>");
+  $("#mfNote").textContent = inViewer() ? "All parts, zipped. For Fusion 360 or your slicer" : "All parts, for Fusion 360 or your slicer";
+  $("#stlNote").textContent = cfg.kind === "kit" ? "Plate + one wall (print it 4 times), zipped" : "Zipped";
+}
+const f1 = v => +v.toFixed(1);
+$$("[data-k]").forEach(el => el.addEventListener("input", () => {
+  const k = el.dataset.k;
+  cfg[k] = el.type === "checkbox" ? el.checked : +el.value;
+  syncPanel(); persist(); draw(); dirty3D = true; if (view !== "edit") schedulePreview();
+}));
+$("#in-size").addEventListener("change", () => {
+  const v = Math.max(50, Math.min(400, +$("#in-size").value || 200)), f = v / cfg.size;
+  if (f === 1) return;
+  snapshot();
+  shapes.forEach(s => { s.pts = s.pts.map(p => [p[0] * f, p[1] * f]); if (s.r) s.r *= f; if (s.w) s.w *= f; });
+  cfg.size = v; syncPanel(); sizeCanvases(); changed(false);
+});
+$$("#symSeg button").forEach(b => b.addEventListener("click", () => { cfg.sym = b.dataset.sym; syncPanel(); changed(false); }));
+const setOpt = (k, v) => { cfg[k] = v; syncPanel(); persist(); dirty3D = true; if (view !== "edit") schedulePreview(); };
+$$("#modeSeg button").forEach(b => b.addEventListener("click", () => setOpt("mode", b.dataset.mode)));
+$$("#kindSeg button").forEach(b => b.addEventListener("click", () => setOpt("kind", b.dataset.kind)));
+$("#sampleBtn").addEventListener("click", () => { snapshot(); cfg.sym = "d4"; shapes = sample(); reid(); sel = null; syncPanel(); changed(true); toast("Sample loaded. Undo brings your design back."); });
+$("#clearBtn").addEventListener("click", () => { if (!shapes.length) return; snapshot(); shapes = []; sel = null; changed(true); toast("Cleared. Undo brings it back."); });
+
+// ---- views
+$$(".tabs button").forEach(b => b.addEventListener("click", () => setView(b.dataset.view)));
+function setView(v) {
+  view = v;
+  $$(".tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.view === v));
+  $("#cv").hidden = v !== "edit"; $("#pv").hidden = v !== "prev"; $("#tv").hidden = v !== "3d";
+  $("#tools").hidden = $("#ctx").hidden = v !== "edit";
+  $("#ruler").hidden = v === "3d";
+  if (v === "edit") draw(); else schedulePreview(0);
+}
+let prevTimer = null;
+function schedulePreview(ms = 150) {
+  clearTimeout(prevTimer);
+  prevTimer = setTimeout(() => { if (view === "prev") drawPreview(); if (view === "3d") show3D(); }, ms);
+}
+
+// shaded 2×2 render of the finished tile face
+function drawPreview() {
+  const c = $("#pv"), x = c.getContext("2d"), W = c.width, T = tok();
+  const gap = Math.max(2, Math.round(W * 0.006)), tw = Math.floor((W - gap * 3) / 2);
+  const N = Math.min(tw, 720), S = cfg.size, px = S / N;
+  const m = heightMask(N), sign = cfg.mode === "mold" ? 1 : -1, D = cfg.depth;
+  const img = new ImageData(N, N), L = [-0.45, -0.6, 0.66], ll = Math.hypot(...L);
+  const lx = L[0] / ll, ly = L[1] / ll, lz = L[2] / ll;
+  const md = i => (i + N) % N;
+  for (let y = 0; y < N; y++) for (let xx = 0; xx < N; xx++) {
+    const gx = sign * D * (m[y * N + md(xx + 1)] - m[y * N + md(xx - 1)]) / (2 * px);
+    const gy = sign * D * (m[md(y + 1) * N + xx] - m[md(y - 1) * N + xx]) / (2 * px);
+    const nl = Math.hypot(gx, gy, 1);
+    const dot = Math.max(0, (-gx * lx - gy * ly + lz) / nl);
+    const hgt = sign * m[y * N + xx];
+    const it = Math.min(1.06, 0.3 + 0.62 * dot / lz + 0.05 * hgt);
+    const i = (y * N + xx) * 4;
+    img.data[i] = 242 * it; img.data[i + 1] = 239 * it; img.data[i + 2] = 230 * it; img.data[i + 3] = 255;
+  }
+  const off = document.createElement("canvas"); off.width = off.height = N; off.getContext("2d").putImageData(img, 0, 0);
+  x.setTransform(1, 0, 0, 1, 0, 0);
+  x.fillStyle = T.outside; x.fillRect(0, 0, W, W);
+  x.imageSmoothingQuality = "high";
+  for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) x.drawImage(off, gap + i * (tw + gap), gap + j * (tw + gap), tw, tw);
+}
+
+// ---- 3D preview (three.js), built from the same vector geometry as the export, at preview detail
+let three = null, dirty3D = true;
+function show3D() {
+  const msg = $("#tvmsg");
+  if (!window.THREE) { msg.textContent = "3D preview needs three.js, which didn't load. Exports still work."; return; }
+  if (!geomReady()) { msg.textContent = "The geometry libraries didn't load, so the 3D model can't be built. Check your connection and reload."; return; }
+  if (!three) {
+    const el = $("#tv"), r = new THREE.WebGLRenderer({ antialias: true });
+    r.setPixelRatio(dpr()); el.appendChild(r.domElement);
+    const scene = new THREE.Scene();
+    const cam = new THREE.PerspectiveCamera(35, 1, 1, 5000);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8f88, 0.75));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.7); sun.position.set(-1, 2, 1.2); scene.add(sun);
+    const controls = THREE.OrbitControls ? new THREE.OrbitControls(cam, r.domElement) : null;
+    const group = new THREE.Group(); group.rotation.x = -Math.PI / 2; scene.add(group);
+    const plate = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({ color: 0xe9e6dc, roughness: 0.85 }));
+    const walls = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({ color: 0x9fb4c2, roughness: 0.7 }));
+    group.add(plate, walls);
+    const render = () => r.render(scene, cam);
+    if (controls) { controls.enableDamping = false; controls.addEventListener("change", render); }
+    r.domElement.addEventListener("webglcontextrestored", () => render());
+    three = {
+      r, scene, cam, controls, plate, walls, render, framed: 0,
+      resize() { const w = el.clientWidth; r.setSize(w, w); r.setClearColor(tok().outside); cam.aspect = 1; cam.updateProjectionMatrix(); render(); },
+    };
+    three.resize();
+  }
+  msg.hidden = true;
+  if (dirty3D) {
+    dirty3D = false;
+    const o = geomOpts(true), res = buildAll(shapes, o), S = cfg.size;
+    const geo = pos => {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      g.computeVertexNormals(); g.translate(-S / 2, -S / 2, 0); return g;
+    };
+    let wallPos = new Float32Array(0);
+    if (res.wall) {   // the four walls, pulled out a little so the joints show
+      const parts = [0, 1, 2, 3].map(k => mapPos(res.wall, wallAssembly(o, k, 8)));
+      wallPos = new Float32Array(parts.reduce((n, p) => n + p.length, 0));
+      parts.reduce((off, p) => (wallPos.set(p, off), off + p.length), 0);
+    }
+    three.plate.geometry.dispose(); three.plate.geometry = geo(res.plate);
+    three.walls.geometry.dispose(); three.walls.geometry = geo(wallPos);
+    if (three.framed !== S) {
+      three.framed = S;
+      three.cam.position.set(S * 0.55, S * 1.15, S * 1.05);
+      if (three.controls) { three.controls.target.set(0, 0, 0); three.controls.update(); } else three.cam.lookAt(0, 0, 0);
+    }
+  }
+  three.resize();
+}
+
+// ---- exports
+const base = () => `pttern-${cfg.size}mm`;
+$("#svgBtn").addEventListener("click", () => {
+  const S = cfg.size, mats = SYM[cfg.sym];
+  let body = "";
+  for (const s of shapes) {
+    const d = svgPath(s), col = s.cut ? "#000" : grayOf(s.level || 100);
+    const paint = s.type === "stroke" ? `fill="none" stroke="${col}" stroke-width="${+s.w.toFixed(3)}" stroke-linecap="round" stroke-linejoin="round"` : `fill="${col}"`;
+    for (const [ox, oy] of OFFS) for (const m of mats) body += `<path transform="matrix(${xf(m, ox * S, oy * S).map(v => +v.toFixed(4)).join(" ")})" d="${d}" ${paint}/>\n`;
+  }
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${S}mm" height="${S}mm" viewBox="0 0 ${S} ${S}">
+<!-- pttern tile: white = raised, black = background. Symmetry: ${cfg.sym}. Repeats seamlessly. -->
+<defs><clipPath id="tile"><rect width="${S}" height="${S}"/></clipPath></defs>
+<rect width="${S}" height="${S}" fill="#000"/>
+<g clip-path="url(#tile)">
+${body}</g>
+</svg>`;
+  offerFile(`${base()}.svg`, svg);
+});
+$("#pngBtn").addEventListener("click", () => {
+  const N = 2048, m = heightMask(N), c = document.createElement("canvas"); c.width = c.height = N;
+  const x = c.getContext("2d"), img = x.createImageData(N, N);
+  for (let i = 0; i < N * N; i++) { const v = m[i] * 255; img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = v; img.data[i * 4 + 3] = 255; }
+  x.putImageData(img, 0, 0);
+  c.toBlob(b => offerFile(`${base()}-heightmap.png`, b), "image/png");
+});
+// Build the full-detail parts, then hand over a 3MF or a zip of STLs.
+function exportModel(btn, note, make) {
+  if (!geomReady()) { toast("The geometry libraries didn't load. Check your connection and reload."); return; }
+  const old = note.textContent;
+  btn.disabled = true; note.textContent = "Building model… this can take a few seconds";
+  setTimeout(async () => {
+    try {
+      const o = geomOpts(false), res = buildAll(shapes, o);
+      await make(o, res);
+    } catch (e) { toast("Couldn't build the model: " + e.message); }
+    btn.disabled = false; note.textContent = old; spec();
+  }, 40);
+}
+const partName = () => cfg.kind === "one" ? "mold" : "pattern-plate";
+$("#mfBtn").addEventListener("click", () => exportModel($("#mfBtn"), $("#mfNote"), async (o, res) => {
+  const objs = [{ name: cfg.kind === "one" ? "Mold" : "Pattern plate", pos: res.plate }];
+  if (res.wall) {
+    const w = wallInfo(o), flat = mapPos(res.wall, wallPrint(o));
+    for (let k = 0; k < 4; k++) objs.push({ name: `Frame wall ${k + 1}`, pos: flat, ty: cfg.size + 10 + k * (w.H + 6) });
+  }
+  const mf = await build3MF(objs), name = `${base()}-${cfg.kind}.3mf`;
+  if (inViewer()) await offerFile(name.replace(/\.3mf$/, "-3mf.zip"), await zipFiles([{ name, data: mf, deflate: false }]));
+  else await offerFile(name, mf);
+}));
+$("#stlBtn").addEventListener("click", () => exportModel($("#stlBtn"), $("#stlNote"), async (o, res) => {
+  const files = [{ name: `${base()}-${partName()}.stl`, data: toSTL(res.plate, `pttern ${partName()}`) }];
+  if (res.wall) files.push({ name: `${base()}-frame-wall-print-4x.stl`, data: toSTL(mapPos(res.wall, wallPrint(o)), "pttern frame wall") });
+  await offerFile(`${base()}-${cfg.kind}-stl.zip`, await zipFiles(files));
+}));
+$("#saveBtn").addEventListener("click", () => offerFile(`${base()}.json`, JSON.stringify({ app: "pttern", version: 1, cfg, shapes }, null, 1)));
+$("#openBtn").addEventListener("click", () => $("#fileIn").click());
+$("#fileIn").addEventListener("change", e => {
+  const f = e.target.files[0]; if (!f) return;
+  f.text().then(t => {
+    const d = JSON.parse(t);
+    if (!Array.isArray(d.shapes)) throw new Error("no shapes");
+    snapshot(); cfg = { ...DEF, ...(d.cfg || {}) }; shapes = d.shapes; reid(); sel = null;
+    syncPanel(); sizeCanvases(); changed(true); toast(`Opened ${f.name}`);
+  }).catch(() => toast("That file isn't a pttern project"));
+  e.target.value = "";
+});
+
+let toastT;
+function toast(t) { const el = $("#toast"); el.textContent = t; el.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("on"), 2600); }
+
+// ---- boot
+(function boot() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem("pttern.v1") || "null"); } catch (e) { }
+  if (saved && Array.isArray(saved.shapes)) {
+    cfg = { ...DEF, ...saved.cfg }; shapes = saved.shapes;
+    if (!saved.cfg.kind) {   // settings saved before the mold kit existed
+      cfg.kind = saved.cfg.mode === "stamp" ? "plate" : "kit";
+      if (saved.cfg.mode === "stamp") cfg.mode = "mold-inv";
+      cfg.wall = Math.max(cfg.wall, DEF.wall); cfg.floor = Math.max(cfg.floor, DEF.floor);
+    }
+  }
+  else shapes = sample();
+  reid(); syncPanel(); renderCtx(); syncHistory();
+  new ResizeObserver(sizeCanvases).observe($("#viewWrap"));
+  sizeCanvases();
+  const redraw = () => { draw(); if (view === "prev") drawPreview(); };
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  getDownloads().then(spec);
+})();
+</script>

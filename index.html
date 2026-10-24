@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Pttern Tile Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+<header class="bar">
+  <div class="brand"><h1>pttern</h1><span id="sizeTag">200 × 200 mm tile</span></div>
+  <div class="tabs" role="tablist">
+    <button role="tab" id="tab-edit" aria-selected="true" data-view="edit">Design</button>
+    <button role="tab" id="tab-prev" aria-selected="false" data-view="prev">Tile</button>
+    <button role="tab" id="tab-3d" aria-selected="false" data-view="3d">3D</button>
+    <button role="tab" id="tab-prof" aria-selected="false" data-view="prof">Profiles</button>
+    <button role="tab" id="tab-force" aria-selected="false" data-view="force">Forces</button>
+  </div>
+</header>
+
+<main class="app">
+  <section class="stage">
+    <div class="view" id="viewWrap">
+      <canvas id="cv" aria-label="Pattern drawing area"></canvas>
+      <canvas id="pv" hidden aria-label="Shaded preview of four tiles"></canvas>
+      <div class="zoombar" id="zoomBar">
+        <button id="zOut" title="Zoom out (−)" aria-label="Zoom out">−</button>
+        <button id="zFit" title="Fit the tile (0)">100%</button>
+        <button id="zIn" title="Zoom in (+)" aria-label="Zoom in">+</button>
+      </div>
+      <div class="three" id="tv" hidden><div class="msg" id="tvmsg">Building 3D model…</div></div>
+    </div>
+    <div class="prof" id="prof" hidden>
+      <div class="profGrid">
+        <figure>
+          <canvas id="profSide" aria-label="Cross-section through the middle of a wall and the plate edge"></canvas>
+          <figcaption><b>Edge section</b> through the middle of a wall and the plate, seen along the wall. Outside is on the left; the dashed line is the corner plan height.</figcaption>
+        </figure>
+        <figure>
+          <canvas id="profPlan" aria-label="Plan section through a corner at the chosen height"></canvas>
+          <figcaption><b>Corner plan</b> at the height below, seen from above. The two walls are shaded differently so you can see whose finger fills the corner at this height.</figcaption>
+        </figure>
+      </div>
+      <div class="row">
+        <div class="lab"><label for="profZ">Corner plan height</label><output id="profZo"></output></div>
+        <input type="range" id="profZ" min="0" max="20" step="0.1" value="3">
+        <small id="profNote"></small>
+      </div>
+      <p class="hint" id="profMsg" hidden></p>
+    </div>
+    <div class="prof" id="force" hidden>
+      <figure>
+        <canvas id="forceCv" aria-label="Plan of the frame with cord and stop forces"></canvas>
+        <figcaption><b>Frame from above</b>, cut at the height below, movements exaggerated. One simulation of the four walls; the default view shortens the long sides so every corner shows at full scale. The outline shows where each wall sits by design, the fill where it settles under the load. Numbers are the force on each finger stop.</figcaption>
+      </figure>
+      <div class="runRow">
+        <button class="btn primary" id="fRun"><b>Run: tighten from loose</b><small>All four walls start 2 mm out and skewed, then the cords pull them in together</small></button>
+        <span class="hint" id="fStatus" aria-live="polite"></span>
+      </div>
+      <div class="forceGrid">
+        <div class="row">
+          <div class="lab"><label for="fView">Show</label></div>
+          <select id="fView"><option value="4" selected>Whole frame, sides shortened</option><option value="-1">Whole frame to scale</option><option value="0">Bottom-left corner</option><option value="1">Bottom-right corner</option><option value="2">Top-right corner</option><option value="3">Top-left corner</option></select>
+        </div>
+        <div class="row">
+          <div class="lab"><label for="fZ">Cut height</label><output id="fZo"></output></div>
+          <input type="range" id="fZ" min="0" max="20" step="0.1" value="10.7">
+        </div>
+        <div class="row">
+          <div class="lab"><label for="fT">Cord tension, each cord</label><output id="fTo"></output></div>
+          <input type="range" id="fT" min="0" max="200" step="5" value="40">
+        </div>
+        <div class="row">
+          <div class="lab"><label for="fCem">Cement pushing out, × still pour</label><output id="fCemo"></output></div>
+          <input type="range" id="fCem" min="0" max="100" step="1" value="1">
+          <small>1 is a still pour of wet cement at your tile thickness. Pressing, tamping or vibrating the mix pushes harder: try 10–50.</small>
+        </div>
+        <div class="row">
+          <div class="lab"><label for="fErr">Bottom-left fingers too long by</label><output id="fErro"></output></div>
+          <input type="range" id="fErr" min="-0.4" max="0.4" step="0.05" value="0">
+          <small>Try a print error: negative leaves that corner short.</small>
+        </div>
+        <div class="row">
+          <div class="lab"><label for="fWall">Extra push on</label></div>
+          <select id="fWall"><option value="-1">Nothing</option><option value="0">Bottom wall</option><option value="1">Right wall</option><option value="2">Top wall</option><option value="3">Left wall</option></select>
+        </div>
+        <div class="row">
+          <div class="lab"><label for="fIn">Push inward</label><output id="fIno"></output></div>
+          <input type="range" id="fIn" min="-100" max="100" step="5" value="0">
+        </div>
+        <div class="row">
+          <div class="lab"><label for="fAlong">Push along the wall</label><output id="fAlongo"></output></div>
+          <input type="range" id="fAlong" min="-100" max="100" step="5" value="0">
+        </div>
+        <div class="row">
+          <div class="lab"><label for="fAt">Push position along the wall</label><output id="fAto"></output></div>
+          <input type="range" id="fAt" min="0" max="1" step="0.05" value="0.5">
+        </div>
+        <div class="row">
+          <div class="lab"><label for="fX">Exaggerate movement</label><output id="fXo"></output></div>
+          <input type="range" id="fX" min="1" max="200" step="1" value="5">
+        </div>
+      </div>
+      <div class="spec" id="fOut"></div>
+      <p class="hint">A static model in plan: rigid walls that slide in, slide along and twist; cords that pull with their tension at every bend; and finger stops and the plate edge as one-way contacts. It shows where the force goes and whether the frame stays square. It ignores friction and flex, so real stops share a little less load and real parts give a little.</p>
+    </div>
+    <div class="ruler" id="ruler"><span id="rulerStart">0</span><span id="rulerMid">100 mm</span><span id="rulerEnd">200</span></div>
+    <div class="tools" id="tools">
+      <button class="tbtn" data-tool="select" aria-pressed="true" title="Select and move (V)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M5 3l14 8-6 1.5L10 19z"/></svg><span class="lbl">Select</span></button>
+      <span class="tsep"></span>
+      <button class="tbtn" data-tool="poly" aria-pressed="false" title="Shape: tap corners (P)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 18L7 5l10 3 3 10z"/></svg><span class="lbl">Shape</span></button>
+      <button class="tbtn" data-tool="bez" aria-pressed="false" title="Curve: tap for corners, drag for smooth points (B)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19C5 9 13 6 20 5"/><path d="M10 4l4 6" stroke-width="1.5"/><circle cx="12" cy="7" r="1.6" fill="currentColor"/><rect x="2.5" y="17.5" width="3" height="3" fill="currentColor"/></svg><span class="lbl">Curve</span></button>
+      <button class="tbtn" data-tool="line" aria-pressed="false" title="Line: straight segments that snap (L)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18l6-10 5 6 5-9"/><circle cx="4" cy="18" r="1.6" fill="currentColor"/><circle cx="10" cy="8" r="1.6" fill="currentColor"/><circle cx="15" cy="14" r="1.6" fill="currentColor"/></svg><span class="lbl">Line</span></button>
+      <button class="tbtn" data-tool="stroke" aria-pressed="false" title="Draw freehand (D)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M3 17c4-9 8 3 12-5s4-5 6-6"/></svg><span class="lbl">Draw</span></button>
+      <span class="tsep"></span>
+      <button class="tbtn" data-tool="rect" aria-pressed="false" title="Rectangle: drag corner to corner (R)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="6" width="16" height="12" rx="2"/></svg><span class="lbl">Rect</span></button>
+      <button class="tbtn" data-tool="ellipse" aria-pressed="false" title="Ellipse: drag corner to corner (O)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="12" rx="9" ry="6"/></svg><span class="lbl">Ellipse</span></button>
+      <button class="tbtn" data-tool="star" aria-pressed="false" title="Polygon or star: drag from the centre (S)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z"/></svg><span class="lbl">Star</span></button>
+      <button class="tbtn" data-tool="circle" aria-pressed="false" title="Circle: drag from centre (C)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/></svg><span class="lbl">Circle</span></button>
+      <button class="tbtn" data-tool="leaf" aria-pressed="false" title="Petal: drag base to tip (E)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21C5 14 5 8 12 3c7 5 7 11 0 18z"/></svg><span class="lbl">Petal</span></button>
+      <span class="tsep"></span>
+      <button class="tbtn" id="modeBtn" aria-pressed="false" title="New shapes cut into the relief instead of raising it"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 12h8"/></svg><span class="lbl">Cut</span></button>
+      <button class="tbtn" id="undoBtn" title="Undo (Ctrl+Z)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg><span class="lbl">Undo</span></button>
+      <button class="tbtn" id="redoBtn" title="Redo (Ctrl+Shift+Z)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h3"/></svg><span class="lbl">Redo</span></button>
+    </div>
+    <div class="ctx" id="ctx"></div>
+  </section>
+
+  <aside class="panel">
+    <details open>
+      <summary>Pattern</summary>
+      <div class="body">
+        <div class="row">
+          <div class="lab"><span>Symmetry</span></div>
+          <div class="seg" style="--n:4" id="symSeg">
+            <button data-sym="none">None</button>
+            <button data-sym="mirror">Mirror ×4</button>
+            <button data-sym="rot4">Turn ×4</button>
+            <button data-sym="d4">Kaleido ×8</button>
+          </div>
+          <small>Every design repeats seamlessly across tile edges. Kaleido ×8 matches the classic encaustic layout: draw inside the light wedge.</small>
+        </div>
+        <div class="row">
+          <div class="lab"><label for="in-size">Tile size</label><output>mm</output></div>
+          <input type="number" id="in-size" min="50" max="400" step="5" value="200">
+        </div>
+        <div class="row">
+          <div class="lab"><label for="in-strokeW">New line width</label><output id="o-strokeW"></output></div>
+          <input type="range" id="in-strokeW" data-k="strokeW" min="1" max="15" step="0.5">
+        </div>
+        <div class="row">
+          <div class="lab"><label for="in-snap">Snap to grid</label></div>
+          <select id="in-snap" data-k="snap"><option value="0">Off</option><option value="1">1 mm</option><option value="2.5">2.5 mm</option><option value="5">5 mm</option></select>
+        </div>
+        <div class="btns">
+          <button class="btn" id="sampleBtn"><b>Load sample</b><small>Florentine rosette</small></button>
+          <button class="btn" id="clearBtn"><b>Clear all</b><small>Start blank</small></button>
+          <button class="btn wide" id="resetBtn"><b>Reset settings</b><small>Mold, tool and view settings back to defaults. Keeps your drawing</small></button>
+        </div>
+      </div>
+    </details>
+
+    <details open>
+      <summary>Relief &amp; mold</summary>
+      <div class="body">
+        <div class="row">
+          <div class="lab"><span>Mold</span></div>
+          <div class="seg" style="--n:3" id="kindSeg">
+            <button data-kind="kit">Detachable<br><small>plate + 4 walls</small></button>
+            <button data-kind="one">One piece<br><small>walls fused</small></button>
+            <button data-kind="plate">Plate only<br><small>no walls</small></button>
+          </div>
+          <small id="kindHint"></small>
+        </div>
+        <div class="row">
+          <div class="lab"><span>Finished tile face</span></div>
+          <div class="seg" style="--n:2" id="modeSeg">
+            <button data-mode="mold">Raised pattern</button>
+            <button data-mode="mold-inv">Engraved pattern</button>
+          </div>
+        </div>
+        <div class="row">
+          <div class="lab"><label for="in-depth">Relief depth</label><output id="o-depth"></output></div>
+          <input type="range" id="in-depth" data-k="depth" min="0.5" max="8" step="0.25">
+        </div>
+        <div class="row">
+          <div class="lab"><label for="in-draft">Draft angle</label><output id="o-draft"></output></div>
+          <input type="range" id="in-draft" data-k="draft" min="0" max="25" step="1">
+          <small>Tapers the sides of the relief so the cement lets go. Built in 0.2 mm steps, the same as print layers.</small>
+        </div>
+        <div class="row">
+          <div class="lab"><label for="in-floor">Plate base thickness</label><output id="o-floor"></output></div>
+          <input type="range" id="in-floor" data-k="floor" min="1.5" max="8" step="0.5">
+        </div>
+        <div class="row wallOnly">
+          <div class="lab"><label for="in-height">Tile thickness, relief included</label><output id="o-height"></output></div>
+          <input type="range" id="in-height" data-k="height" min="5" max="40" step="1">
+        </div>
+        <div class="row wallOnly">
+          <div class="lab"><label for="in-wall">Wall thickness</label><output id="o-wall"></output></div>
+          <input type="range" id="in-wall" data-k="wall" min="3" max="12" step="0.5">
+        </div>
+        <div class="row kitOnly">
+          <div class="lab"><label for="in-clear">Joint clearance</label><output id="o-clear"></output></div>
+          <input type="range" id="in-clear" data-k="clear" min="0.1" max="0.6" step="0.05">
+          <small>Gap between the finger joints, and between the plate and the walls.</small>
+        </div>
+        <div class="row wallOnly">
+          <div class="lab"><label for="in-innerRadius">Corner radius</label><output id="o-innerRadius"></output></div>
+          <input type="range" id="in-innerRadius" data-k="innerRadius" min="0" max="20" step="0.5">
+          <small>Rounds the tile corners. Each detachable wall carries one rounded corner, and its outside corners are 45° chamfers that keep the wall at least its full thickness and print without supports.</small>
+        </div>
+        <div class="row kitOnly">
+          <div class="lab"><label for="in-grooves">Cord grooves</label></div>
+          <select id="in-grooves" data-k="grooves"><option value="0">None</option><option value="1">One, at mid-height</option><option value="2">Two, near the top and bottom edges</option></select>
+        </div>
+        <label class="check kitOnly"><input type="checkbox" id="in-lock" data-k="lock"> <span>Lock the plate under the walls: a 2 mm tongue on the plate slides into a rebate in each wall, holding it down and keeping cement from getting underneath</span></label>
+        <label class="check"><input type="checkbox" id="in-mirror" data-k="mirror"> <span>Mirror the pattern so the cast face reads the right way round</span></label>
+        <div class="row">
+          <div class="lab"><label for="in-seg">Curve detail</label></div>
+          <select id="in-seg" data-k="seg"><option value="0.5">Standard · 0.5 mm segments</option><option value="0.2">Fine · 0.2 mm</option><option value="0.1">Ultra · 0.1 mm</option></select>
+        </div>
+        <div class="spec" id="spec"></div>
+      </div>
+    </details>
+
+    <details open>
+      <summary>Export</summary>
+      <div class="body">
+        <div class="btns">
+          <button class="btn primary wide" id="mfBtn"><b>3D model (3MF)</b><small id="mfNote">All parts, for Fusion 360 or your slicer</small></button>
+          <button class="btn wide" id="stlBtn"><b>STL files</b><small id="stlNote">One file per part, zipped</small></button>
+          <button class="btn" id="svgBtn"><b>SVG</b><small>Vector, mm units</small></button>
+          <button class="btn" id="pngBtn"><b>Heightmap</b><small>PNG, 2048 px</small></button>
+          <button class="btn" id="saveBtn"><b>Save project</b><small>.json</small></button>
+          <button class="btn" id="openBtn"><b>Open project</b><small>.json</small></button>
+        </div>
+        <input type="file" id="fileIn" accept=".json,application/json" hidden>
+      </div>
+    </details>
+  </aside>
+</main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
