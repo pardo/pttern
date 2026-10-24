@@ -5,6 +5,7 @@ import { SYM, OFFS, xf, trace, isLine, lineWidth } from "./pattern.js";
 import { clone, dist, simplify, transformShape, flipShape, mirrored, pointOps, anchorCount, minAnchors, anchorOf, bezShown, toBez, deletePoint, addPoint, smoothPoint, cornerPoint, handlesLinked, snapTargets, snapDelta, magnetPts, centre, snap, angleRound } from "./shapes.js";
 import { wallInfo, cornerRadius, grooveHeights, grooveNeck, LOCK_TONGUE } from "./moldspec.js";
 import { zipFiles } from "./files.js";
+import { TEMPLATES, FAMILIES, templateShapes, buildTemplate } from "./templates.js";
 import { frameForces, frameModel, CORNERS, WALLS } from "./forces.js";
 
 const $ = s => document.querySelector(s);
@@ -43,8 +44,8 @@ function svgPath(s) {
   return d;
 }
 
-function paintShapes(ctx, k, x0, y0, style, offs, list = shapes) {
-  const S = cfg.size, mats = SYM[cfg.sym];
+function paintShapes(ctx, k, x0, y0, style, offs, list = shapes, sym = cfg.sym, S = cfg.size) {
+  const mats = SYM[sym];
   for (const s of list) {
     const st = style(s);
     ctx.globalCompositeOperation = st.op || "source-over";
@@ -136,32 +137,18 @@ async function offerFile(filename, data) {
 
 // ---- persistence & history
 function persist() { try { localStorage.setItem("pttern.v1", JSON.stringify({ cfg, shapes })); } catch (e) { } }
-function snapshot() { undoStack.push(JSON.stringify(shapes)); if (undoStack.length > 120) undoStack.shift(); redoStack = []; syncHistory(); }
-function undo() { if (!undoStack.length) return; redoStack.push(JSON.stringify(shapes)); shapes = JSON.parse(undoStack.pop()); sel = null; selPt = -1; changed(true); }
-function redo() { if (!redoStack.length) return; undoStack.push(JSON.stringify(shapes)); shapes = JSON.parse(redoStack.pop()); sel = null; selPt = -1; changed(true); }
+// history entries hold the symmetry too, since loading a template changes both
+const state = () => JSON.stringify({ sym: cfg.sym, shapes });
+function restore(st) { const d = JSON.parse(st); cfg.sym = d.sym; shapes = d.shapes; }
+function snapshot() { undoStack.push(state()); if (undoStack.length > 120) undoStack.shift(); redoStack = []; syncHistory(); }
+function undo() { if (!undoStack.length) return; redoStack.push(state()); restore(undoStack.pop()); sel = null; selPt = -1; syncPanel(); changed(true); }
+function redo() { if (!redoStack.length) return; undoStack.push(state()); restore(redoStack.pop()); sel = null; selPt = -1; syncPanel(); changed(true); }
 function syncHistory() { $("#undoBtn").disabled = !undoStack.length; $("#redoBtn").disabled = !redoStack.length; }
 function reid() { nextId = 1 + shapes.reduce((m, s) => Math.max(m, s.id || 0), 0); shapes.forEach(s => { if (!s.id) s.id = nextId++; }); }
 function changed(rebuildCtx) { persist(); draw(); syncHistory(); if (rebuildCtx) renderCtx(); dirty3D = true; if (view !== "edit") schedulePreview(); }
 
-// ---- sample: a Florentine-style rosette, drawn in one wedge and mirrored ×8
-function sample() {
-  const arc = [];
-  for (let a = 8; a <= 82; a += 6) { const t = a * Math.PI / 180; arc.push([58 * Math.cos(t), 58 * Math.sin(t)]); }
-  const S = cfg.size / 200, sc = p => [p[0] * S, p[1] * S];
-  const list = [
-    { type: "leaf", pts: [[100, 94], [100, 38]], w: 28 },
-    { type: "leaf", pts: [[96, 96], [68, 68]], w: 18 },
-    { type: "circle", pts: [[100, 100]], r: 10 },
-    { type: "circle", pts: [[100, 100]], r: 4, cut: true },
-    { type: "poly", smooth: true, pts: [[100, 3], [111, 13], [107, 26], [100, 21], [93, 26], [89, 13]] },
-    { type: "leaf", pts: [[0, 0], [36, 36]], w: 26 },
-    { type: "circle", pts: [[0, 0]], r: 7, cut: true },
-    { type: "stroke", pts: arc, w: 4.5 },
-    { type: "poly", pts: [[60, 10], [67, 18], [60, 26], [53, 18]] },
-    { type: "leaf", pts: [[100, 38], [100, 50]], w: 5, cut: true },
-  ];
-  return list.map(s => ({ level: 100, cut: false, smooth: false, ...s, pts: s.pts.map(sc), r: s.r ? s.r * S : undefined, w: s.w ? s.w * S : undefined }));
-}
+// ---- sample: the Florentine rosette, the first template
+const sample = () => buildTemplate(TEMPLATES[0], cfg.size);
 
 // ---- canvas & view: canvas px = V + design mm × K. At zoom 1 the tile fills the canvas with a margin of its neighbours.
 const cv = $("#cv"), ctx = cv.getContext("2d");
@@ -433,7 +420,7 @@ function abortDrag() {
   const d = drag; drag = null; snapMark = null;
   if (!d) return;
   if (d.kind === "create") { shapes.pop(); undoStack.pop(); sel = null; syncHistory(); }
-  else if (d.pushed) { shapes = JSON.parse(undoStack.pop()); syncHistory(); }
+  else if (d.pushed) { restore(undoStack.pop()); syncHistory(); }
   else if (d.kind === "place") { draft.pts.splice(d.first ? -2 : -1); if (!draft.pts.length) draft = null; }
   else if (d.kind === "bezPt") { draft.pts.splice(-3); if (!draft.pts.length) draft = null; }
   renderCtx(); draw();
@@ -903,11 +890,38 @@ $("#in-size").addEventListener("change", () => {
   shapes.forEach(s => { s.pts = s.pts.map(p => [p[0] * f, p[1] * f]); if (s.r) s.r *= f; if (s.w) s.w *= f; if (s.lw) s.lw *= f; });
   cfg.size = v; zoom = 1; vc = null; syncPanel(); sizeCanvases(); changed(false);
 });
-$$("#symSeg button").forEach(b => b.addEventListener("click", () => { cfg.sym = b.dataset.sym; syncPanel(); changed(false); }));
+$$("#symSeg button").forEach(b => b.addEventListener("click", () => { if (cfg.sym === b.dataset.sym) return; snapshot(); cfg.sym = b.dataset.sym; syncPanel(); changed(false); }));
 const setOpt = (k, v) => { cfg[k] = v; syncPanel(); persist(); dirty3D = true; if (view !== "edit") schedulePreview(); };
 $$("#modeSeg button").forEach(b => b.addEventListener("click", () => setOpt("mode", b.dataset.mode)));
 $$("#kindSeg button").forEach(b => b.addEventListener("click", () => setOpt("kind", b.dataset.kind)));
-$("#sampleBtn").addEventListener("click", () => { snapshot(); cfg.sym = "d4"; shapes = sample(); reid(); sel = null; syncPanel(); changed(true); toast("Sample loaded. Undo brings your design back."); });
+// ---- templates: a gallery of pre-made designs, thumbnails drawn as they scroll into view
+let tplFam = "All", tplTheme = "";
+const tplObs = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { paintThumb(e.target); tplObs.unobserve(e.target); } }), { root: $("#tplGrid") });
+function paintThumb(c) {
+  const t = TEMPLATES[+c.dataset.i], T = tok(), px = c.width = c.height = Math.round(c.clientWidth * dpr()) || 160, x = c.getContext("2d");
+  x.fillStyle = T.field; x.fillRect(0, 0, px, px);
+  paintShapes(x, px / 200, 0, 0, s => ({ color: s.cut ? T.field : mixHex(T.field, T.raised, (s.level || 100) / 100) }), OFFS, templateShapes(t), t.sym, 200);
+}
+function renderTemplates() {
+  $("#tplFams").innerHTML = ["All", ...FAMILIES].map(f => `<button class="mini" data-fam="${f}" aria-pressed="${f === tplFam}">${f}</button>`).join("");
+  $$("#tplFams button").forEach(b => b.onclick = () => { tplFam = b.dataset.fam; renderTemplates(); $("#tplGrid").scrollTop = 0; });
+  const list = TEMPLATES.map((t, i) => [t, i]).filter(([t]) => tplFam === "All" || t.family === tplFam);
+  $("#tplCount").textContent = `${list.length} design${list.length === 1 ? "" : "s"}`;
+  $("#tplGrid").innerHTML = list.map(([t, i]) => `<button class="tpl" data-i="${i}" title="${t.name} · ${t.family}"><canvas data-i="${i}" aria-hidden="true"></canvas><span>${t.name}</span></button>`).join("");
+  $$("#tplGrid canvas").forEach(c => tplObs.observe(c));
+  $$("#tplGrid .tpl").forEach(b => b.onclick = () => loadTemplate(TEMPLATES[+b.dataset.i]));
+}
+function loadTemplate(t) {
+  snapshot(); cfg.sym = t.sym; shapes = buildTemplate(t, cfg.size); reid(); sel = null; selPt = -1;
+  $("#tplDlg").close(); syncPanel(); changed(true); toast(`${t.name} loaded. Undo brings your design back.`);
+}
+$("#tplBtn").addEventListener("click", () => {
+  const theme = JSON.stringify(tok());
+  if (theme !== tplTheme || !$("#tplGrid").children.length) { tplTheme = theme; renderTemplates(); }
+  $("#tplDlg").showModal();
+});
+$("#tplClose").addEventListener("click", () => $("#tplDlg").close());
+$("#tplDlg").addEventListener("click", e => { if (e.target === e.currentTarget) e.currentTarget.close(); });
 $("#resetBtn").addEventListener("click", () => {
   if (!confirm("Put the mold, tool and view settings back to their defaults? Your drawing stays as it is.")) return;
   cfg = { ...DEF, size: cfg.size, sym: cfg.sym };

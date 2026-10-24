@@ -156,7 +156,7 @@
           <select id="in-snap" data-k="snap"><option value="0">Off</option><option value="1">1 mm</option><option value="2.5">2.5 mm</option><option value="5">5 mm</option></select>
         </div>
         <div class="btns">
-          <button class="btn" id="sampleBtn"><b>Load sample</b><small>Florentine rosette</small></button>
+          <button class="btn" id="tplBtn"><b>Templates</b><small>100 tile designs</small></button>
           <button class="btn" id="clearBtn"><b>Clear all</b><small>Start blank</small></button>
           <button class="btn wide" id="resetBtn"><b>Reset settings</b><small>Mold, tool and view settings back to defaults. Keeps your drawing</small></button>
         </div>
@@ -243,6 +243,12 @@
     </details>
   </aside>
 </main>
+<dialog class="tplDlg" id="tplDlg" aria-labelledby="tplTitle">
+  <div class="tplHead"><h2 id="tplTitle">Templates</h2><span id="tplCount"></span><button class="mini ico" id="tplClose" aria-label="Close">✕</button></div>
+  <div class="tplFams" id="tplFams" role="group" aria-label="Filter by style"></div>
+  <div class="tplGrid" id="tplGrid"></div>
+  <p class="tplNote">A template replaces your drawing and sets its symmetry. Undo brings your design back.</p>
+</dialog>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script type="module" src="/src/main.js"></script>
 </body>
