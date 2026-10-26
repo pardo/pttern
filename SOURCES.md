@@ -19,3 +19,7 @@ Inspiration for the 100 pre-made templates in `src/templates.js`. These pages co
 ## Portuguese azulejo
 
 - [Wikipedia – Azulejo](https://en.wikipedia.org/wiki/Azulejo)
+
+## Church
+
+The Church templates (Half Diagonal, Floor Chevron, Nested Diamonds, Octagram, Daisy and Star, Clipped Daisy, Oak Rosette, Fleury Cross, Scroll Rosette) are drawn from photos of a 19th-century hydraulic cement church floor. Only the square field tiles are included, not the border strips.

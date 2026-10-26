@@ -2,7 +2,9 @@
 // Each one is ordinary shapes, so a loaded template edits like anything drawn by hand.
 // Inspired by encaustic and hydraulic cement tiles, Moorish zellige, Portuguese azulejos,
 // Victorian floors, Art Deco, mid-century and op-art patterns.
-import { SYM, xf, trace } from "./pattern.js";
+import ClipperLib from "clipper-lib";
+import { SYM, OFFS, xf, trace, flatten, isLine, lineWidth } from "./pattern.js";
+import { simplify } from "./shapes.js";
 
 const S0 = 200, C = [100, 100], O = [0, 0];
 const rad = d => d * Math.PI / 180;
@@ -43,7 +45,7 @@ const shift = (list, dx, dy) => list.map(s => ({ ...s, pts: s.pts.map(([x, y]) =
 const daisy = (c, R, n, o) => [...around(n, a => petal(c, R * 0.28, R, a, R * 0.34, o)), circle(c, R * 0.26), circle(c, R * 0.1, CUT)];
 const burst = (c, n, r) => [...around(n, a => [line([P(7, a, c), P(r, a, c)], 3), circle(P(r, a, c), 4.5)]), circle(c, 5)];
 
-export const FAMILIES = ["Encaustic", "Moorish", "Azulejo", "Victorian", "Art Deco", "Cuban", "Mid-century", "Botanical", "Op art", "Minimal"];
+export const FAMILIES = ["Encaustic", "Moorish", "Azulejo", "Victorian", "Art Deco", "Cuban", "Mid-century", "Botanical", "Op art", "Minimal", "Church"];
 
 const T = (name, family, sym, build) => ({ name, family, sym, build });
 
@@ -500,6 +502,47 @@ export const TEMPLATES = [
     }));
     return out;
   }),
+
+  // ---- Church: square tiles from a photographed 19th-century church floor
+  T("Half Diagonal", "Church", "none", () => [poly([[0, 0], [200, 0], [0, 200]])]),
+  T("Floor Chevron", "Church", "none", () => [poly([[0, 0], [100, 100], [200, 0], [200, 100], [100, 200], [0, 100]])]),
+  T("Nested Diamonds", "Church", "d4", () => [
+    diamond(C, 100), diamond(C, 82, 82, CUT), diamond(C, 64), diamond(C, 46, 46, CUT),
+    star(C, 26, 8, 0.72, -90, L50), star(C, 20, 8, 0.72), star(C, 15, 8, 0.72, -90, CUT), star(C, 10, 8, 0.72, -90, L50),
+    diamond(O, 82), diamond(O, 64, 64, CUT), diamond(O, 46), diamond(O, 28, 28, CUT), star(O, 16, 8, 0.72, -90, L50),
+  ]),
+  T("Octagram", "Church", "d4", () => [
+    star(C, 94, 8, 0.72, -90, L50), star(C, 82, 8, 0.72), star(C, 72, 8, 0.72, -90, CUT),
+    star(C, 64, 8, 0.72), star(C, 54, 8, 0.72, -90, L50),
+  ]),
+  T("Daisy and Star", "Church", "d4", () => [
+    ...around(8, a => circle(P(32, a), 15)), circle(C, 32), circle(C, 20, CUT), ring(C, 14, 6, L50),
+    ...around(8, a => petal(O, 8, 58, a, 17, L50)), ...around(8, a => petal(O, 8, 40, a, 12, L50), 22.5), circle(O, 11),
+  ]),
+  T("Clipped Daisy", "Church", "d4", () => [
+    poly([[0, 0], [46, 0], [0, 46]], L50), ...[22.5, 45, 67.5].map(a => petal(O, 4, a === 45 ? 34 : 26, a, 10)),
+    ...around(8, a => circle(P(32, a), 15)), circle(C, 32), circle(C, 20, CUT), ring(C, 14, 6, L50),
+  ]),
+  T("Oak Rosette", "Church", "d4", () => [
+    ...around(8, a => [petal(C, 12, 58, a, 18, L75), circle(P(66, a), 12, L75), circle(P(52, a - 11), 9, L75), circle(P(52, a + 11), 9, L75)]),
+    circle(C, 13),
+  ]),
+  T("Fleury Cross", "Church", "d4", () => [
+    ...around(4, a => petal(C, 8, 66, a, 26, L50), 45), ...around(4, a => circle(P(28, a), 10, L50)),
+    ...around(4, a => circle(P(46, a), 4, CUT), 45), rbox(C, 22, 22), rbox(O, 14, 14, 45),
+  ]),
+  // spans four tiles: loads as a quarter, so the tiles turned about their shared corner make the whole
+  { ...T("Scroll Rosette", "Church", "d4", () => {
+    const loops = [-135, -45, 45, 135].map(a => P(87, a)), fan = a => blob([P(16, a - 7), P(48, a - 17), P(57, a - 7), P(57, a + 7), P(48, a + 17), P(16, a + 7)]);
+    return [
+      ring(C, 70, 16), ...loops.map(c => ring(c, 13, 16)), poly([[0, 0], [34, 0], [0, 34]]),
+      ring(C, 70, 9, CUT), ...loops.map(c => ring(c, 13, 9, CUT)), circle([11, 11], 4, CUT),
+      ring(C, 70, 9, L50), ...loops.map(c => ring(c, 13, 9, L50)), ...loops.map(c => ring(c, 5.5, 3)),
+      ...around(4, a => [oval(P(32, a - 16), 17, 10, a - 16), oval(P(32, a + 16), 17, 10, a + 16)]),
+      ...around(4, a => fan(a), 45).map(f => ({ ...f, ...CUT })), circle(C, 18, CUT),
+      ...around(4, a => fan(a), 45).map(f => ({ ...f, ...L50 })), circle(C, 13, L50),
+    ];
+  }), four: true },
 ];
 
 // ---- building: drop shapes that the symmetry already draws, then scale to the tile
@@ -539,4 +582,56 @@ export function buildTemplate(t, S) {
     for (const p of ["r", "w", "lw"]) if (c[p]) c[p] *= k;
     return c;
   });
+}
+
+// ---- quarter: the template's top-left quarter enlarged to fill the tile, so four tiles turned
+// about their shared corner rebuild the whole design. Only 4-fold templates rebuild that way.
+export const quarterable = t => t.sym === "rot4" || t.sym === "d4";
+const QS = 1000;   // Clipper integer units per mm
+const toPts = p => p.map(q => [q.X / QS, q.Y / QS]);
+function clip(subject, clipPaths, type, tree) {
+  const c = new ClipperLib.Clipper(), NZ = ClipperLib.PolyFillType.pftNonZero, out = tree ? new ClipperLib.PolyTree() : [];
+  c.AddPaths(subject, ClipperLib.PolyType.ptSubject, true);
+  c.AddPaths(clipPaths, ClipperLib.PolyType.ptClip, true);
+  c.Execute(type, out, NZ, NZ);
+  return out;
+}
+const rect = (x0, y0, x1, y1) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => ({ X: Math.round(x * QS), Y: Math.round(y * QS) }));
+// a polygon with holes cut into hole-free pieces by vertical lines through each hole;
+// the pieces overlap a little so no seam shows where they meet
+function splitHoles(outer, holes) {
+  if (!holes.length) return [outer];
+  const xs = holes.map(h => { const v = h.map(q => q.X); return (Math.min(...v) + Math.max(...v)) / 2 / QS; }).sort((a, b) => a - b);
+  const cuts = [-1e5, ...xs, 1e5], out = [];
+  for (let i = 0; i < cuts.length - 1; i++) out.push(...clip([outer, ...holes], [rect(cuts[i] - 0.2, -1e5, cuts[i + 1] + 0.2, 1e5)], ClipperLib.ClipType.ctIntersection));
+  return out;
+}
+export function buildQuarter(t, S) {
+  const k = 2 * S / S0, tile = [rect(0, 0, S, S)], out = [];
+  for (const s of templateShapes(t)) {
+    const base = flatten(s, 0.5), pad = isLine(s) ? lineWidth(s) * k : 0;
+    for (const [ox, oy] of OFFS) for (const m of SYM[t.sym]) {
+      const q = xf(m, ox * S0, oy * S0, S0);
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+      const ps = base.map(c => c.map(([x, y]) => {
+        const X = (q[0] * x + q[2] * y + q[4]) * k, Y = (q[1] * x + q[3] * y + q[5]) * k;
+        x0 = Math.min(x0, X); x1 = Math.max(x1, X); y0 = Math.min(y0, Y); y1 = Math.max(y1, Y);
+        return { X: Math.round(X * QS), Y: Math.round(Y * QS) };
+      }));
+      if (x1 < -pad || x0 > S + pad || y1 < -pad || y0 > S + pad) continue;   // copy misses the quarter
+      let paths = [];
+      if (isLine(s)) {
+        const co = new ClipperLib.ClipperOffset(2, 0.05 * QS);
+        co.AddPaths(ps, ClipperLib.JoinType.jtRound, s.outline ? ClipperLib.EndType.etClosedLine : ClipperLib.EndType.etOpenRound);
+        co.Execute(paths, lineWidth(s) * k / 2 * QS);
+      } else paths = ps.filter(p => p.length > 2).map(p => ClipperLib.Clipper.Orientation(p) ? p : p.reverse());
+      // each copy is clipped on its own: overlapping copies just stack, which is far quicker than merging them
+      const walk = node => node.Childs().forEach(n => {   // outer rings, each with its holes; islands sit inside holes
+        out.push(...splitHoles(n.Contour(), n.Childs().map(h => h.Contour())).map(p => poly(simplify(toPts(p), 0.02), { level: s.level || 100, cut: !!s.cut })));
+        n.Childs().forEach(walk);
+      });
+      walk(clip(paths, tile, ClipperLib.ClipType.ctIntersection, true));
+    }
+  }
+  return out.filter(s => s.pts.length > 2).map(s => ({ smooth: false, ...s }));
 }

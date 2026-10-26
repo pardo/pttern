@@ -5,7 +5,7 @@ import { SYM, OFFS, xf, trace, isLine, lineWidth } from "./pattern.js";
 import { clone, dist, simplify, transformShape, flipShape, mirrored, pointOps, anchorCount, minAnchors, anchorOf, bezShown, toBez, deletePoint, addPoint, smoothPoint, cornerPoint, handlesLinked, snapTargets, snapDelta, magnetPts, centre, snap, angleRound } from "./shapes.js";
 import { wallInfo, cornerRadius, grooveHeights, grooveNeck, LOCK_TONGUE } from "./moldspec.js";
 import { zipFiles } from "./files.js";
-import { TEMPLATES, FAMILIES, templateShapes, buildTemplate } from "./templates.js";
+import { TEMPLATES, FAMILIES, templateShapes, buildTemplate, buildQuarter, quarterable } from "./templates.js";
 import { frameForces, frameModel, CORNERS, WALLS } from "./forces.js";
 
 const $ = s => document.querySelector(s);
@@ -13,7 +13,7 @@ const $$ = s => [...document.querySelectorAll(s)];
 const dpr = () => Math.min(window.devicePixelRatio || 1, 3);
 
 const MOLD_DEF = { mode: "mold-inv", depth: 3, draft: 20, floor: 1.5, height: 20, wall: 5 };
-const DEF = { v: 3, innerRadius: 5, size: 200, sym: "d4", snap: 0, strokeW: 4, newCut: false, kind: "kit", clear: 0.3, grooves: 2, lock: true, mirror: true, seg: 0.2, ...MOLD_DEF };
+const DEF = { v: 3, innerRadius: 5, size: 200, sym: "d4", turn: false, snap: 0, strokeW: 4, newCut: false, kind: "kit", clear: 0.3, grooves: 2, lock: true, mirror: true, seg: 0.2, ...MOLD_DEF };
 let cfg = { ...DEF };
 let shapes = [];
 let sel = null;          // selected shape id
@@ -137,9 +137,9 @@ async function offerFile(filename, data) {
 
 // ---- persistence & history
 function persist() { try { localStorage.setItem("pttern.v1", JSON.stringify({ cfg, shapes })); } catch (e) { } }
-// history entries hold the symmetry too, since loading a template changes both
-const state = () => JSON.stringify({ sym: cfg.sym, shapes });
-function restore(st) { const d = JSON.parse(st); cfg.sym = d.sym; shapes = d.shapes; }
+// history entries hold the symmetry and tile turning too, since loading a template changes them
+const state = () => JSON.stringify({ sym: cfg.sym, turn: cfg.turn, shapes });
+function restore(st) { const d = JSON.parse(st); cfg.sym = d.sym; cfg.turn = !!d.turn; shapes = d.shapes; }
 function snapshot() { undoStack.push(state()); if (undoStack.length > 120) undoStack.shift(); redoStack = []; syncHistory(); }
 function undo() { if (!undoStack.length) return; redoStack.push(state()); restore(undoStack.pop()); sel = null; selPt = -1; syncPanel(); changed(true); }
 function redo() { if (!redoStack.length) return; undoStack.push(state()); restore(redoStack.pop()); sel = null; selPt = -1; syncPanel(); changed(true); }
@@ -905,16 +905,21 @@ function paintThumb(c) {
 function renderTemplates() {
   $("#tplFams").innerHTML = ["All", ...FAMILIES].map(f => `<button class="mini" data-fam="${f}" aria-pressed="${f === tplFam}">${f}</button>`).join("");
   $$("#tplFams button").forEach(b => b.onclick = () => { tplFam = b.dataset.fam; renderTemplates(); $("#tplGrid").scrollTop = 0; });
-  const list = TEMPLATES.map((t, i) => [t, i]).filter(([t]) => tplFam === "All" || t.family === tplFam);
+  $("#tplQuarter").setAttribute("aria-pressed", !!ui.tplQuarter);
+  const list = TEMPLATES.map((t, i) => [t, i]).filter(([t]) => (tplFam === "All" || t.family === tplFam) && (!ui.tplQuarter || quarterable(t)));
   $("#tplCount").textContent = `${list.length} design${list.length === 1 ? "" : "s"}`;
-  $("#tplGrid").innerHTML = list.map(([t, i]) => `<button class="tpl" data-i="${i}" title="${t.name} · ${t.family}"><canvas data-i="${i}" aria-hidden="true"></canvas><span>${t.name}</span></button>`).join("");
+  $("#tplGrid").innerHTML = list.map(([t, i]) => `<button class="tpl" data-i="${i}" title="${t.name} · ${t.family}${t.four ? " · spans 4 tiles" : ""}"><canvas data-i="${i}" aria-hidden="true"></canvas><span>${t.name}</span></button>`).join("");
   $$("#tplGrid canvas").forEach(c => tplObs.observe(c));
   $$("#tplGrid .tpl").forEach(b => b.onclick = () => loadTemplate(TEMPLATES[+b.dataset.i]));
 }
+// a quarter load puts a quarter of the design on the tile; four tiles turned about a corner make the whole
 function loadTemplate(t) {
-  snapshot(); cfg.sym = t.sym; shapes = buildTemplate(t, cfg.size); reid(); sel = null; selPt = -1;
-  $("#tplDlg").close(); syncPanel(); changed(true); toast(`${t.name} loaded. Undo brings your design back.`);
+  const q = (!!ui.tplQuarter || !!t.four) && quarterable(t);   // four-tile designs always load as a quarter
+  snapshot(); cfg.sym = q ? "none" : t.sym; cfg.turn = q; shapes = q ? buildQuarter(t, cfg.size) : buildTemplate(t, cfg.size); reid(); sel = null; selPt = -1;
+  $("#tplDlg").close(); syncPanel(); changed(true);
+  toast(q ? `A quarter of ${t.name} loaded. Turn four tiles about their shared corner to make the whole. Undo brings your design back.` : `${t.name} loaded. Undo brings your design back.`);
 }
+$("#tplQuarter").addEventListener("click", () => { ui.tplQuarter = !ui.tplQuarter; saveUI(); renderTemplates(); $("#tplGrid").scrollTop = 0; });
 $("#tplBtn").addEventListener("click", () => {
   const theme = JSON.stringify(tok());
   if (theme !== tplTheme || !$("#tplGrid").children.length) { tplTheme = theme; renderTemplates(); }
@@ -924,7 +929,7 @@ $("#tplClose").addEventListener("click", () => $("#tplDlg").close());
 $("#tplDlg").addEventListener("click", e => { if (e.target === e.currentTarget) e.currentTarget.close(); });
 $("#resetBtn").addEventListener("click", () => {
   if (!confirm("Put the mold, tool and view settings back to their defaults? Your drawing stays as it is.")) return;
-  cfg = { ...DEF, size: cfg.size, sym: cfg.sym };
+  cfg = { ...DEF, size: cfg.size, sym: cfg.sym, turn: cfg.turn };
   ui = { ...UI_DEF, panels: ui.panels };
   FORCE_INPUTS.forEach(id => { const el = $("#" + id); el.value = el.tagName === "SELECT" ? ([...el.options].find(o => o.defaultSelected) || el.options[0]).value : el.defaultValue; });
   profZ = null; saveUI(); syncPanel(); setTool(tool); changed(true);
@@ -1226,9 +1231,10 @@ function drawForces() {
 }
 
 // shaded 2×2 render of the finished tile face
+const GROUT = 3;   // mm between laid tiles
 function drawPreview() {
   const c = $("#pv"), x = c.getContext("2d"), W = c.width, T = tok();
-  const gap = Math.max(2, Math.round(W * 0.006)), tw = Math.floor((W - gap * 3) / 2);
+  const tw = Math.floor(W / (2 + 3 * GROUT / cfg.size)), gap = (W - 2 * tw) / 3;   // tiles laid with a GROUT mm joint
   const N = Math.min(tw, 720), S = cfg.size, px = S / N;
   const m = heightMask(N), sign = cfg.mode === "mold" ? 1 : -1, D = cfg.depth;
   const img = new ImageData(N, N), L = [-0.45, -0.6, 0.66], ll = Math.hypot(...L);
@@ -1246,14 +1252,18 @@ function drawPreview() {
   }
   const off = document.createElement("canvas"); off.width = off.height = N; off.getContext("2d").putImageData(img, 0, 0);
   x.setTransform(1, 0, 0, 1, 0, 0);
-  x.fillStyle = T.outside; x.fillRect(0, 0, W, W);
+  x.fillStyle = "#8d8a82"; x.fillRect(0, 0, W, W);   // grout
   x.imageSmoothingQuality = "high";
   const rr = cfg.kind === "plate" ? 0 : cornerRadius(geomOpts(true)) * tw / S;
   for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) {
     const px = gap + i * (tw + gap), py = gap + j * (tw + gap);
     x.save(); x.beginPath();
     if (x.roundRect) x.roundRect(px, py, tw, tw, rr); else x.rect(px, py, tw, tw);
-    x.clip(); x.drawImage(off, px, py, tw, tw); x.restore();
+    x.clip();
+    if (cfg.turn) {   // a quarter design: each tile turned so its bottom-right corner meets the middle
+      x.translate(px + tw / 2, py + tw / 2); x.rotate([[0, -1], [1, 2]][i][j] * Math.PI / 2); x.drawImage(off, -tw / 2, -tw / 2, tw, tw);
+    } else x.drawImage(off, px, py, tw, tw);
+    x.restore();
   }
 }
 

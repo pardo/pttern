@@ -3,7 +3,7 @@
 // 3D frame: mm, Z up, y up the design. Runs in the build worker (and in node for tests).
 import ClipperLib from "clipper-lib";
 import Module from "manifold-3d";
-import { SYM, OFFS, xf, trace, isLine, lineWidth } from "./pattern.js";
+import { SYM, OFFS, xf, trace, isLine, lineWidth, flatten } from "./pattern.js";
 import { wallInfo, cornerRadius, chamferStart, plateRadius, grooveHeights, LOCK_TONGUE, hasLock } from "./moldspec.js";
 
 let M = null;
@@ -26,33 +26,6 @@ function positions(man) {
 
 // ---- pattern outlines (Clipper integer units)
 const SC = 1000;
-function flatten(s, seg) {
-  const out = []; let cur = null, last = [0, 0];
-  const push = (x, y) => { cur.push([x, y]); last = [x, y]; };
-  const n = L => Math.max(2, Math.ceil(L / seg));
-  trace({
-    moveTo(x, y) { cur = []; out.push(cur); push(x, y); },
-    lineTo(x, y) { push(x, y); },
-    quadraticCurveTo(cx, cy, x, y) {
-      const [x0, y0] = last, k = n(Math.hypot(cx - x0, cy - y0) + Math.hypot(x - cx, y - cy));
-      for (let i = 1; i <= k; i++) { const t = i / k, u = 1 - t; push(u * u * x0 + 2 * u * t * cx + t * t * x, u * u * y0 + 2 * u * t * cy + t * t * y); }
-    },
-    bezierCurveTo(ax, ay, bx, by, x, y) {
-      const [x0, y0] = last, k = n(Math.hypot(ax - x0, ay - y0) + Math.hypot(bx - ax, by - ay) + Math.hypot(x - bx, y - by));
-      for (let i = 1; i <= k; i++) {
-        const t = i / k, u = 1 - t, a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t;
-        push(a * x0 + b * ax + c * bx + d * x, a * y0 + b * ay + c * by + d * y);
-      }
-    },
-    arc(x, y, r) {
-      cur.length = 0;
-      const k = Math.max(32, Math.ceil(2 * Math.PI * r / seg));
-      for (let i = 0; i < k; i++) { const t = i / k * 2 * Math.PI; push(x + r * Math.cos(t), y + r * Math.sin(t)); }
-    },
-    closePath() { },
-  }, s);
-  return out.filter(c => c.length > 1);
-}
 const NZ = () => ClipperLib.PolyFillType.pftNonZero;
 function clipPaths(a, b, type) {
   const c = new ClipperLib.Clipper(), sol = [];
