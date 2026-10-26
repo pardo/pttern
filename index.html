@@ -227,7 +227,7 @@
           <input type="number" id="in-tiles" min="1" max="200" step="1" inputmode="numeric">
         </div>
         <div class="spec" id="mix"></div>
-        <small class="mixNote">1 part cement to 3 parts sand by volume, water half the cement's weight. Dry mix shrinks by about a quarter once wet, so the amounts are the cast volume × 1.3, plus 10% spare. The two printed scoops come with the 3MF and STL exports: fill each level and strike it off across the handle.</small>
+        <small class="mixNote">1 part cement to 3 parts sand by volume, water half the cement's weight. Dry mix shrinks by about a quarter once wet, so the amounts are the full tile volume × 1.3, plus 10% spare; the pattern isn't taken off, so a little is left over. Print the scoops once from Export, they suit any tile: 50 ml of cement (one hole in the handle) and 150 ml of sand (three holes). Fill each level and strike it off across the handle; fills are rounded up.</small>
       </div>
     </details>
 
@@ -237,7 +237,7 @@
         <div class="btns">
           <button class="btn primary wide" id="mfBtn"><b>3D model (3MF)</b><small id="mfNote">All parts, for Fusion 360 or your slicer</small></button>
           <button class="btn wide" id="stlBtn"><b>STL files</b><small id="stlNote">One file per part, zipped</small></button>
-          <button class="btn wide wallOnly" id="scoopBtn"><b>Mix scoops (STL)</b><small id="scoopNote">Cement + sand scoop, zipped</small></button>
+          <button class="btn wide" id="scoopBtn"><b>Mix scoops (STL)</b><small id="scoopNote">50 ml cement + 150 ml sand, for any tile, zipped</small></button>
           <button class="btn" id="svgBtn"><b>SVG</b><small>Vector, mm units</small></button>
           <button class="btn" id="pngBtn"><b>Heightmap</b><small>PNG, 2048 px</small></button>
           <button class="btn" id="saveBtn"><b>Save project</b><small>.json</small></button>
