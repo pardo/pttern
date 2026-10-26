@@ -4,7 +4,7 @@
 import ClipperLib from "clipper-lib";
 import Module from "manifold-3d";
 import { SYM, OFFS, xf, trace, isLine, lineWidth, flatten } from "./pattern.js";
-import { wallInfo, cornerRadius, flapOutline, FLAP_LEN, plateRadius, grooveHeights, LOCK_TONGUE, hasLock } from "./moldspec.js";
+import { wallInfo, cornerRadius, flapOutline, fromUV, clipChannel, clipOutline, FLAP_LEN, plateRadius, LOCK_TONGUE, hasLock } from "./moldspec.js";
 
 let M = null;
 export async function initGeometry(opts) {
@@ -116,7 +116,7 @@ function stackSolid(layers) {
   return man;
 }
 
-// o: {S, D, B, W, T, mode, kind, mirror, draft, seg, step, clear, grooves, ri, sym}
+// o: {S, D, B, W, T, mode, kind, mirror, draft, seg, step, clear, lock, ri, sym}
 // The relief is a stack of thin slabs, each offset inwards a little more (the draft). Slab outlines
 // come from manifold's built-in Clipper2. Regions run past the tile edge (the pattern wraps), so the
 // stack is built oversize and trimmed to the plate outline with a single boolean at the end.
@@ -168,10 +168,9 @@ function fusedWalls(T, o) {
 
 // One frame wall in local coords: x along its length, y from the outer face (0) to the inner face (W),
 // z up. All four walls are identical: both ends are 45° miters, each running on past the outside
-// corner as a clamp flap, and the left end also carries the rounded inside corner. Walls slide on
-// from outside in any order; clamps on the flaps (and optionally a cord in the flap-tip notches)
-// hold them. Everything is a plan outline extruded up, so the wall prints standing on its top edge
-// without supports.
+// corner as a flap with a flared tip, and the left end also carries the rounded inside corner. Walls
+// slide on from outside in any order and a C clip slid down over each pair of flaps locks the corner.
+// Everything is a plan outline extruded up, so the wall prints standing on its top edge without supports.
 function wallSolid(T, o) {
   const { Manifold, CrossSection } = M;
   const { L, H } = wallInfo(o), W = o.W, g = o.clear, ri = cornerRadius(o);
@@ -193,24 +192,30 @@ function wallSolid(T, o) {
   let wall = T(T(T(new CrossSection(outline, "Positive")).simplify(1e-4)).extrude(H));
   // rebate along the bottom of the inner face (fillet included) for the plate's tongue
   if (hasLock(o)) wall = T(wall.subtract(box(-1, L + 1, W - LOCK_TONGUE, W + ri + 1, -1, o.B + g)));
-  // cord notches: a 45° V across each flap tip, so a cord round the frame can't slide off
-  const zs = grooveHeights(o);
-  if (zs.length) {
-    const gd = Math.min(3, H / 6) / 2, [, P, Q] = flapOutline(), cutters = [];
-    for (const zc of zs) for (const [A, B] of both([P, Q])) {
-      const len = Math.hypot(B[0] - A[0], B[1] - A[1]), d = [(B[0] - A[0]) / len, (B[1] - A[1]) / len];
-      const nrm = A[0] < L / 2 ? [Math.SQRT1_2, Math.SQRT1_2] : [-Math.SQRT1_2, Math.SQRT1_2];   // into the flap
-      const pts = [];
-      for (const [E, s] of [[A, -1], [B, 1]]) {
-        const b = [E[0] + d[0] * s, E[1] + d[1] * s];
-        pts.push([b[0] - nrm[0] * 0.6, b[1] - nrm[1] * 0.6, zc - gd - 0.6], [b[0] - nrm[0] * 0.6, b[1] - nrm[1] * 0.6, zc + gd + 0.6], [b[0] + nrm[0] * gd, b[1] + nrm[1] * gd, zc]);
-      }
-      cutters.push(T(Manifold.hull(pts)));
-    }
-    wall = T(wall.subtract(T(Manifold.union(cutters))));
-  }
   return wall;
 }
+
+// Corner clip in flap-pair coords (u along the miter line, v across it), z up as assembled: a C that
+// slides down over the two flaps. The channel is cut in slices that open from a snug fit at the
+// bottom to the joint clearance at the top. Prints standing up, as assembled.
+function clipSolid(T, o) {
+  const { CrossSection } = M, H = wallInfo(o).H, n = 8, cuts = [];
+  for (let i = 0; i < n; i++) {
+    const z0 = i ? i * H / n : -1, z1 = i < n - 1 ? (i + 1) * H / n + 0.01 : H + 1;
+    cuts.push(T(T(T(new CrossSection([clipChannel(o.clear * (i + 0.5) / n)])).extrude(z1 - z0)).translate([0, 0, z0])));
+  }
+  let clip = T(T(new CrossSection([clipOutline()])).extrude(H));
+  for (const c of cuts) clip = T(clip.subtract(c));
+  return clip;
+}
+// clip k at corner k (wall k's left end), lifted by `lift`; uv -> wall coords -> around the plate
+export const clipAssembly = (o, k, gap, lift) => {
+  const f = wallAssembly(o, k, 0), g = wallAssembly(o, (k + 3) % 4, gap), h = wallAssembly(o, k, gap), L = wallInfo(o).L;
+  // the two flaps move apart when the walls are pulled out: put the clip between them
+  const a = f(0, 0, 0), b = h(0, 0, 0), c = g(L, 0, 0), c0 = wallAssembly(o, (k + 3) % 4, 0)(L, 0, 0);
+  const dx = (b[0] - a[0] + c[0] - c0[0]) / 2, dy = (b[1] - a[1] + c[1] - c0[1]) / 2;
+  return (u, v, z) => { const p = f(...fromUV([u, v]), z); return [p[0] + dx, p[1] + dy, z + lift]; };
+};
 
 export function mapPos(a, f) {
   const out = new Float32Array(a.length);
@@ -230,7 +235,8 @@ export function buildAll(list, o) {
   return arena(T => {
     let plate = plateSolid(T, list, o);
     if (o.kind === "one") plate = T(plate.add(fusedWalls(T, o)));
-    return { plate: positions(plate), wall: o.kind === "kit" ? positions(wallSolid(T, o)) : null };
+    const kit = o.kind === "kit";
+    return { plate: positions(plate), wall: kit ? positions(wallSolid(T, o)) : null, clip: kit ? positions(clipSolid(T, o)) : null };
   });
 }
 
@@ -241,24 +247,26 @@ export function sectionModel(list, o) {
     const keep = m => m.translate([0, 0, 0]);   // an untracked copy survives the arena
     let plate = plateSolid(T, list, o);
     if (o.kind === "one") plate = T(plate.add(fusedWalls(T, o)));
-    const out = { plate: keep(plate), walls: [], local: null };
+    const out = { plate: keep(plate), walls: [], local: null, clip: null };
     if (o.kind === "kit") {
       const w = wallSolid(T, o), h = o.S / 2;
       out.local = keep(w);   // one wall in its own coordinates, for the force view
       // wall 0 runs along the bottom edge, wall 3 up the left: they meet at the bottom-left corner
+      const c = clipSolid(T, o), f = clipAssembly(o, 0, 0, 0);
+      out.clip = keep(T(c.warp(p => { const q = f(p[0], p[1], p[2]); p[0] = q[0]; p[1] = q[1]; })));
       for (const k of [0, 3]) out.walls.push(T(T(T(w.translate([-o.W - o.clear, -o.W - o.clear, 0])).translate([-h, -h, 0])).rotate([0, 0, 90 * k])).translate([h, h, 0]));
     }
     return out;
   });
 }
-export const freeModel = m => { m.plate.delete(); m.walls.forEach(w => w.delete()); if (m.local) m.local.delete(); };
+export const freeModel = m => { m.plate.delete(); m.walls.forEach(w => w.delete()); if (m.local) m.local.delete(); if (m.clip) m.clip.delete(); };
 export function sectionsOf(model, o, z) {
   // edge: plane x = S/2 seen along +x, points as [z, y]; plan: horizontal slice at height z, points as [x, y]
   const side = man => arena(T => T(T(man.rotate([0, 90, 0])).slice(-o.S / 2)).toPolygons());
   const plan = man => arena(T => T(man.slice(z)).toPolygons());
   return {
     side: { plate: side(model.plate), walls: model.walls.map(side) },
-    plan: { plate: plan(model.plate), walls: model.walls.map(plan) },
+    plan: { plate: plan(model.plate), walls: model.walls.map(plan), clip: model.clip ? plan(model.clip) : [] },
     wallPlan: model.local ? plan(model.local) : [],
   };
 }

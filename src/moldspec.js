@@ -11,17 +11,32 @@ export function wallInfo(o) {
 export const cornerRadius = o => Math.max(0, Math.min(o.ri || 0, o.S / 4));
 
 // Kit corners are 45° miters. Each wall's miter face runs on past the outside corner as a flap, so
-// the two flaps at a corner lie face to face and a clamp (a binder clip or small spring clamp)
-// squeezes them together: a clamped miter can't hinge, so the frame stays square.
-export const FLAP_T = 4, FLAP_LEN = 14;   // flap thickness, and how far it runs past the outside corner
-// Flap outline at a wall's left end, in wall coords (x along the wall, y from the outer face in).
-// It hangs off the outer face between x = 0 and FLAP_T·√2; its first edge is the miter line x = y.
-export function flapOutline() {
-  const d = FLAP_LEN / Math.SQRT2, s = FLAP_T / Math.SQRT2;
-  return [[0, 0], [-d, -d], [-d + s, -d - s], [FLAP_T * Math.SQRT2, 0]];
+// the two flaps at a corner lie face to face. Near the tip both flaps flare out into a dovetail, and
+// a printed C clip with a matching channel slides down over the pair: it hooks behind the flare, so
+// the flaps can neither part nor slide along each other and the corner can't hinge. The channel
+// tapers from the joint clearance at the top to a snug fit at the bottom, so pushing the clip home
+// takes up the play.
+export const FLAP_T = 4, FLAP_LEN = 14;      // flap thickness, and how far it runs past the outside corner
+export const FLARE = 2, FLARE_LEN = 3;        // how much each flap thickens towards its tip, over this length (a 34° hook)
+export const CLIP_T = 3;                     // clip jaw and back thickness
+// Flap-pair coords: u runs along the miter line out from the outside corner, v across it, positive
+// towards the wall that owns the flap. Wall coords at its left end: x along the wall, y in from the outer face.
+export const fromUV = ([u, v]) => [(-u + v) / Math.SQRT2, (-u - v) / Math.SQRT2];
+// Flap outline at a wall's left end, in wall coords: the miter line, the flared tip, the outer face
+// back to where it leaves the wall's outer face (FLAP_T·√2 along it).
+export const flapOutline = () => [[0, 0], [FLAP_LEN, 0], [FLAP_LEN, FLAP_T + FLARE], [FLAP_LEN - FLARE_LEN, FLAP_T], [-FLAP_T, FLAP_T]].map(fromUV);
+// The clip's channel in flap-pair coords, widened by `gap` all round: the jaws reach 2 mm past the
+// start of the flare, and the back sits `gap` beyond the tips.
+export function clipChannel(gap) {
+  const u0 = FLAP_LEN - FLARE_LEN - 2, u1 = FLAP_LEN + gap, t = FLAP_T + gap, f = FLAP_T + FLARE + gap;
+  return [[u0, -t], [FLAP_LEN - FLARE_LEN, -t], [u1, -f], [u1, f], [FLAP_LEN - FLARE_LEN, t], [u0, t]];
+}
+export function clipOutline() {
+  const u0 = FLAP_LEN - FLARE_LEN - 2, u1 = FLAP_LEN + CLIP_T, w = FLAP_T + FLARE + CLIP_T, c = 1.5;
+  return [[u0, -w + c], [u0 + c, -w], [u1 - c, -w], [u1, -w + c], [u1, w - c], [u1 - c, w], [u0 + c, w], [u0, w - c]];
 }
 // How far the wall reaches from the flap tips (outside) to the rounded inside corner, for the print layout.
-export const wallDepth = o => o.W + cornerRadius(o) * (1 - Math.SQRT1_2) + (FLAP_LEN + FLAP_T) / Math.SQRT2;
+export const wallDepth = o => o.W + cornerRadius(o) * (1 - Math.SQRT1_2) + (FLAP_LEN + FLAP_T + FLARE) / Math.SQRT2;
 
 // Plate lock (kit only): the plate's base layer sticks out this far as a tongue, and each wall has a
 // matching rebate along the bottom of its inner face, so the walls hold the plate down and cement
@@ -32,13 +47,4 @@ export const hasLock = o => o.kind === "kit" && !!o.lock;
 export function plateRadius(o) {
   if (o.kind === "one") return cornerRadius(o);
   return o.kind === "kit" && cornerRadius(o) > 0.3 ? Math.max(0, cornerRadius(o) - o.clear) : 0;
-}
-
-// Cord notch centre heights, cut across the flap tips. Two sit near the top and bottom edges,
-// leaving a 1.5 mm lip and the middle of the flaps free for the clamp.
-export function grooveHeights(o) {
-  const { H } = wallInfo(o), gd = Math.min(3, H / 6) / 2, edge = gd + 1.5;
-  if (o.grooves == 2 && H - 2 * edge >= 2 * gd + 1) return [edge, H - edge];
-  if (o.grooves > 0) return [H / 2];
-  return [];
 }

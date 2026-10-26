@@ -1,27 +1,17 @@
-// Static force check for the detachable frame: where do the walls settle, and how hard does each
-// miter press, when the corners are clamped and the cords tightened (plus any extra push you want to try)?
+// Static force check for the detachable frame: where do the walls settle, and how hard do the
+// miters and corner clips press, under the cement and any extra push you want to try?
 // Each wall is a rigid body in plan with three freedoms: slide along (u), move inwards (v) and
-// twist (φ, about its centre). Each clamp squeezes its pair of flaps together with a steady force
-// at the middle of the flaps; the cords pull with their tension times the length of the loop round
-// the flap tips (the convex hull, as a tight cord would lie). Both ends of every miter face (its
-// inside edge and its flap tip) and the plate edge are stiff one-way contacts. The resting pose minimises the total energy: each round
-// linearises the contacts and the cord about the current pose and solves for the step with the
-// touching contacts held (an active set), until nothing moves. Lengths in mm, forces in N.
-import { wallInfo, cornerRadius, flapOutline, FLAP_LEN } from "./moldspec.js";
+// twist (φ, about its centre). Both ends of every miter face (its inside edge and its flap tip),
+// the corner clips and the plate edge are stiff one-way contacts; a clip stops its two flaps
+// parting or sliding along each other once its play is taken up. The resting pose minimises the
+// total energy: each round linearises the contacts about the current pose and solves for the step
+// with the touching contacts held (an active set), until nothing moves. Lengths in mm, forces in N.
+import { wallInfo, cornerRadius, flapOutline, fromUV, FLAP_LEN, FLARE, FLARE_LEN } from "./moldspec.js";
 
 const K = 2e4;      // contact stiffness, N/mm: stiff enough that stops give way by about a micron
 const EPS = 0.05;   // weak spring to home, N/mm: settles the frame floating in the plate gap (0.3 mm costs 0.015 N)
 
 const rot = (a, [x, y]) => [x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a)];
-
-function hull(pts) {   // convex hull of [owner, [x, y]] (monotone chain)
-  const s = [...pts].sort((a, b) => a[1][0] - b[1][0] || a[1][1] - b[1][1]);
-  const cross = (o, a, b) => (a[1][0] - o[1][0]) * (b[1][1] - o[1][1]) - (a[1][1] - o[1][1]) * (b[1][0] - o[1][0]);
-  const lo = [], hi = [];
-  for (const p of s) { while (lo.length > 1 && cross(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); }
-  for (const p of s.reverse()) { while (hi.length > 1 && cross(hi[hi.length - 2], hi[hi.length - 1], p) <= 0) hi.pop(); hi.push(p); }
-  return lo.slice(0, -1).concat(hi.slice(0, -1));
-}
 
 function solve(A, b) {   // Gaussian elimination with partial pivoting
   const n = b.length, M = A.map((r, i) => [...r, b[i]]);
@@ -38,7 +28,7 @@ function solve(A, b) {   // Gaussian elimination with partial pivoting
 export const CORNERS = ["bottom-left", "bottom-right", "top-right", "top-left"];
 export const WALLS = ["bottom", "right", "top", "left"];
 
-// load: { tension: [N per cord...], clamp: N per corner, push: { wall, at: 0..1 along, inward, along } (N),
+// load: { push: { wall, at: 0..1 along, inward, along } (N),
 // cement: N of outward pressure on each wall (applied at its middle), error: mm the bottom wall's
 // left miter stands proud at its inside edge (a miter cut a little off 45°) }
 // frameModel sets the problem up; round() moves all four walls one step together (optionally capped,
@@ -51,7 +41,6 @@ export function frameForces(o, load) {
 }
 export function frameModel(o, load) {
   const { I, L } = wallInfo(o), W = o.W, c = o.clear, S = o.S, h = S / 2, C = [L / 2, W / 2];
-  const T = (load.tension || []).reduce((a, b) => a + b, 0);
   // wall k at home: local -> world is a quarter turn k about the tile centre after shifting into place
   const home = k => { const a = k * Math.PI / 2, [tx, ty] = rot(a, [-W - c - h, -W - c - h]); return { a, tx: tx + h, ty: ty + h }; };
   const H = [0, 1, 2, 3].map(home);
@@ -73,19 +62,27 @@ export function frameModel(o, load) {
     const j = (k + 3) % 4, inner = [m - (k === 0 ? e : 0) / Math.SQRT2, m + (k === 0 ? e : 0) / Math.SQRT2];   // e pushes it into the neighbour
     contacts.push(["inside edge", k, q => -open(q, k, j, inner)], ["flap tip", k, q => -open(q, k, j, tip)]);
   }
+  // corner clips. The walls are rigid top to bottom, so the clip's snug bottom slice sets the play:
+  // there the flaps can part by both of its gaps, and slide along each other by the gap behind the
+  // tips plus the gap on the hook's flank, stretched by its slope. Checked where the jaws start and
+  // at the tips, so the clip also resists the flaps turning inside it.
+  const gap = o.clear * 0.5 / 8, across = 2 * gap, along = gap * (1 + Math.hypot(FLARE, FLARE_LEN) / FLARE);
+  const jaw = [fromUV([FLAP_LEN - FLARE_LEN - 2, 0]), fromUV([FLAP_LEN, 0])];
+  const slide = (q, k, j, p) => { const [x, y] = toLocal(q, j, toWorld(q, k, p)); return (x - y) / Math.SQRT2; };
+  for (let k = 0; k < 4; k++) {
+    const j = (k + 3) % 4, s0 = slide(new Array(12).fill(0), k, j, jaw[1]);
+    for (const p of jaw) contacts.push(["clip across", k, q => open(q, k, j, p) - across]);
+    contacts.push(["clip along", k, q => slide(q, k, j, jaw[1]) - s0 - along], ["clip along", k, q => s0 - slide(q, k, j, jaw[1]) - along]);
+  }
   // plate edge: the plate's corners must stay outside each wall's inner face
   const plate = [[0, 0], [S, 0], [S, S], [0, S]];
   for (let k = 0; k < 4; k++) for (const p of [plate[k], plate[(k + 1) % 4]]) contacts.push([`plate edge`, -1 - k, q => W - toLocal(q, k, p)[1]]);
 
-  const tips = [tip, flapOutline()[2]], bends = q => hull([0, 1, 2, 3].flatMap(k => tips.flatMap(p => [[k, toWorld(q, k, p)], [k, toWorld(q, k, [L - p[0], p[1]])]])));
-  const clampAt = [-FLAP_LEN / 2 / Math.SQRT2, -FLAP_LEN / 2 / Math.SQRT2];   // middle of the flaps, on the miter line
-  const perimeter = q => { const b = bends(q); let s = 0; b.forEach((p, i) => { const n = b[(i + 1) % b.length][1]; s += Math.hypot(n[0] - p[1][0], n[1] - p[1][1]); }); return s; };
   const pushes = [...(load.push ? [load.push] : []), ...(load.cement ? [0, 1, 2, 3].map(wall => ({ wall, at: 0.5, inward: -load.cement, along: 0 })) : [])]
     .filter(p => p.inward || p.along);
   // energy pieces other than the contacts, as functions of the pose
   const outside = q => {
-    let E = T * perimeter(q);
-    for (let k = 0; k < 4; k++) E += (load.clamp || 0) * open(q, k, (k + 3) % 4, clampAt);
+    let E = 0;
     for (const push of pushes) {
       const at = [W + I * push.at, 0], p0 = toWorld(new Array(12).fill(0), push.wall, at), p1 = toWorld(q, push.wall, at);
       const [fx, fy] = rot(H[push.wall].a, [push.along, push.inward]);
@@ -93,15 +90,14 @@ export function frameModel(o, load) {
     }
     return E;
   };
-  // total energy for the line search, with the loop measured from home so the numbers stay precise
-  const P0 = perimeter(new Array(12).fill(0));
+  // total energy for the line search
   const energy = q => {
-    let E = outside(q) - T * P0;
+    let E = outside(q);
     for (const [, , pen] of contacts) { const d = pen(q); if (d > 0) E += 0.5 * K * d * d; }
     return E + 0.5 * EPS * q.reduce((s, v) => s + v * v, 0);
   };
   const jac = (fn, q) => { const f0 = fn(q); return [f0, q.map((_, i) => { const a = [...q]; a[i] += 1e-7; return (fn(a) - f0) / 1e-7; })]; };
-  // one step for all four walls together: linearise every contact and the cord about the pose,
+  // one step for all four walls together: linearise every contact and the push about the pose,
   // solve with the touching contacts held, then line-search on the energy. maxStep caps the move (mm / rad).
   function round(q, maxStep = Infinity) {
     if (maxStep < Infinity && contacts.every(([, , pen]) => pen(q) <= 0)) {
@@ -115,7 +111,7 @@ export function frameModel(o, load) {
       return { q: q.map((x, i) => x + v[i] * s), step: s * size };
     }
     const lin = contacts.map(([, , pen]) => jac(pen, q)), f = jac(outside, q)[1];
-    // curvature of the cord (and push) energy: it is what holds the walls against twisting
+    // curvature of the push energy (zero for steady pushes, kept so the step stays general)
     const Hc = q.map((_, i) => { const a = [...q]; a[i] += 1e-6; const fa = jac(outside, a)[1]; return fa.map((v, j) => (v - f[j]) / 1e-6); });
     let active = lin.map(([v]) => v > 0), dq = null;
     for (let pass = 0; pass < 40; pass++) {
@@ -158,7 +154,7 @@ export function frameModel(o, load) {
   };
   const corners = [0, 1, 2, 3].map(inner);
   return {
-    q, stops, tension: T,
+    q, stops,
     toWorld: (k, p) => toWorld(q, k, p), home: (k, p) => toWorld(new Array(12).fill(0), k, p),
     angles: [0, 1, 2, 3].map(angle),
     diagonals: [Math.hypot(corners[0][0] - corners[2][0], corners[0][1] - corners[2][1]), Math.hypot(corners[1][0] - corners[3][0], corners[1][1] - corners[3][1])],
