@@ -4,6 +4,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { SYM, OFFS, xf, trace, isLine, lineWidth } from "./pattern.js";
 import { clone, dist, simplify, transformShape, flipShape, mirrored, pointOps, anchorCount, minAnchors, anchorOf, bezShown, toBez, deletePoint, addPoint, smoothPoint, cornerPoint, handlesLinked, snapTargets, snapDelta, magnetPts, centre, snap, angleRound } from "./shapes.js";
 import { wallInfo, cornerRadius, FLAP_T, FLAP_LEN, FLARE, LOCK_TONGUE } from "./moldspec.js";
+import { mixFor, RATIO } from "./mix.js";
 import { zipFiles } from "./files.js";
 import { TEMPLATES, FAMILIES, templateShapes, buildTemplate, buildQuarter, quarterable } from "./templates.js";
 import { frameForces, frameModel, CORNERS, WALLS } from "./forces.js";
@@ -13,7 +14,7 @@ const $$ = s => [...document.querySelectorAll(s)];
 const dpr = () => Math.min(window.devicePixelRatio || 1, 3);
 
 const MOLD_DEF = { mode: "mold-inv", depth: 3, draft: 20, floor: 1.5, height: 20, wall: 5 };
-const DEF = { v: 3, innerRadius: 5, size: 200, sym: "d4", turn: false, snap: 0, strokeW: 4, newCut: false, kind: "kit", clear: 0.3, lock: true, mirror: true, seg: 0.2, ...MOLD_DEF };
+const DEF = { v: 3, innerRadius: 5, size: 200, sym: "d4", turn: false, snap: 0, strokeW: 4, newCut: false, kind: "kit", clear: 0.3, lock: true, mirror: true, seg: 0.2, tiles: 1, ...MOLD_DEF };
 let cfg = { ...DEF };
 let shapes = [];
 let sel = null;          // selected shape id
@@ -145,7 +146,8 @@ function undo() { if (!undoStack.length) return; redoStack.push(state()); restor
 function redo() { if (!redoStack.length) return; undoStack.push(state()); restore(redoStack.pop()); sel = null; selPt = -1; syncPanel(); changed(true); }
 function syncHistory() { $("#undoBtn").disabled = !undoStack.length; $("#redoBtn").disabled = !redoStack.length; }
 function reid() { nextId = 1 + shapes.reduce((m, s) => Math.max(m, s.id || 0), 0); shapes.forEach(s => { if (!s.id) s.id = nextId++; }); }
-function changed(rebuildCtx) { persist(); draw(); syncHistory(); if (rebuildCtx) renderCtx(); dirty3D = true; if (view !== "edit") schedulePreview(); }
+let mixT;
+function changed(rebuildCtx) { persist(); draw(); syncHistory(); clearTimeout(mixT); mixT = setTimeout(mixSpec, 250); if (rebuildCtx) renderCtx(); dirty3D = true; if (view !== "edit") schedulePreview(); }
 
 // ---- sample: the Florentine rosette, the first template
 const sample = () => buildTemplate(TEMPLATES[0], cfg.size);
@@ -875,8 +877,29 @@ function spec() {
   lines.push(`Relief ${cfg.depth} mm${step ? `, sides taper ${f1(step)} mm` : ", straight sides"}`);
   $("#spec").innerHTML = lines.join("<br>");
   $("#mfNote").textContent = inViewer() ? "All parts, zipped. For Fusion 360 or your slicer" : "All parts, for Fusion 360 or your slicer";
-  $("#stlNote").textContent = cfg.kind !== "kit" ? "Zipped" : "Plate + one wall (print it 4 times), zipped";
+  $("#stlNote").textContent = cfg.kind === "plate" ? "Zipped" : cfg.kind === "one" ? "Mold + 2 scoops, zipped" : "Plate, one wall and clip (print 4 of each), 2 scoops, zipped";
+  mixSpec();
 }
+// ---- cement mix: amounts for the batch and the scoop sizes, from the cast volume
+function mix() { const m = heightMask(256); return mixFor(geomOpts(true), m.reduce((a, v) => a + v, 0) / m.length, cfg.tiles); }
+function mixSpec() {
+  if (cfg.kind === "plate") return;
+  const m = mix(), ml = v => v < 1000 ? `${Math.round(v)} ml` : `${f1(v / 1000)} l`, g = v => v < 1000 ? `${Math.round(v)} g` : `${f1(v / 1000)} kg`;
+  const fills = m.fills * m.tiles, x = n => n === 1 ? "once" : `${n} times`;
+  $("#in-tiles").value = cfg.tiles;
+  $("#mix").innerHTML = [
+    `Cast ${ml(m.wet)} a tile` + (m.tiles > 1 ? `, ${ml(m.wet * m.tiles)} for ${m.tiles}` : ""),
+    `Cement ${ml(m.cement)} · ${g(m.cementG)}`,
+    `Sand ${ml(m.sand)} · ${g(m.sandG)}`,
+    `Water ${ml(m.water)}, add a little at a time`,
+    `<b>Scoops</b> cement ${ml(m.scoop)}, sand ${ml(m.scoop * RATIO)}`,
+    `Fill each ${x(fills)}; water: the cement scoop to its groove, ${x(fills)}`,
+  ].join("<br>");
+  $("#scoopNote").textContent = `Cement ${ml(m.scoop)} + sand ${ml(m.scoop * RATIO)}, zipped`;
+}
+$("#in-tiles").addEventListener("change", () => {
+  cfg.tiles = Math.max(1, Math.min(200, Math.round(+$("#in-tiles").value) || 1)); persist(); mixSpec();
+});
 const f1 = v => +v.toFixed(1);
 $$("[data-k]").forEach(el => el.addEventListener("input", () => {
   const k = el.dataset.k;
@@ -1344,18 +1367,26 @@ async function exportModel(btn, note, task, extra) {
   catch (e) { toast("Couldn't build the model: " + e.message); return null; }
   finally { btn.disabled = false; note.textContent = old; spec(); }
 }
+// the scoops for the current design, for the worker; none with plate only
+function scoopSpec() { if (cfg.kind === "plate") return null; const m = mix(); return { cement: m.scoop, ratio: RATIO, line: m.line }; }
 const partName = () => cfg.kind === "one" ? "mold" : "pattern-plate";
 $("#mfBtn").addEventListener("click", async () => {
-  const mf = await exportModel($("#mfBtn"), $("#mfNote"), "3mf");
+  const mf = await exportModel($("#mfBtn"), $("#mfNote"), "3mf", { scoop: scoopSpec() });
   if (!mf) return;
   const name = `${base()}-${cfg.kind}.3mf`;
   if (inViewer()) await offerFile(name.replace(/\.3mf$/, "-3mf.zip"), await zipFiles([{ name, data: mf, deflate: false }]));
   else await offerFile(name, mf);
 });
 $("#stlBtn").addEventListener("click", async () => {
-  const names = { plate: `${base()}-${partName()}.stl`, wall: `${base()}-frame-wall-print-4x.stl`, clip: `${base()}-corner-clip-print-4x.stl` };
-  const zip = await exportModel($("#stlBtn"), $("#stlNote"), "stl", { names });
+  const names = { plate: `${base()}-${partName()}.stl`, wall: `${base()}-frame-wall-print-4x.stl`, clip: `${base()}-corner-clip-print-4x.stl`,
+    scoops: [`${base()}-scoop-cement-1-part.stl`, `${base()}-scoop-sand-${RATIO}-parts.stl`] };
+  const zip = await exportModel($("#stlBtn"), $("#stlNote"), "stl", { names, scoop: scoopSpec() });
   if (zip) await offerFile(`${base()}-${cfg.kind}-stl.zip`, zip);
+});
+$("#scoopBtn").addEventListener("click", async () => {
+  const names = [`${base()}-scoop-cement-1-part.stl`, `${base()}-scoop-sand-${RATIO}-parts.stl`];
+  const zip = await exportModel($("#scoopBtn"), $("#scoopNote"), "scoops", { names, scoop: scoopSpec() });
+  if (zip) await offerFile(`${base()}-scoops-stl.zip`, zip);
 });
 $("#saveBtn").addEventListener("click", () => offerFile(`${base()}.json`, JSON.stringify({ app: "pttern", version: 1, cfg, shapes }, null, 1)));
 $("#openBtn").addEventListener("click", () => $("#fileIn").click());

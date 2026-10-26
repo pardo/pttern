@@ -1,6 +1,6 @@
 // Builds mold geometry and export files off the main thread so the page stays responsive.
 import wasmUrl from "manifold-3d/manifold.wasm?url";
-import { initGeometry, buildAll, mapPos, wallAssembly, wallPrint, clipAssembly, sectionModel, sectionsOf, freeModel } from "./geometry.js";
+import { initGeometry, buildAll, mapPos, wallAssembly, wallPrint, clipAssembly, buildScoops, sectionModel, sectionsOf, freeModel } from "./geometry.js";
 import { wallInfo, wallDepth } from "./moldspec.js";
 import { build3MF, toSTL, zipFiles } from "./files.js";
 
@@ -19,10 +19,17 @@ function toOrigin(pos) {
   return mapPos(pos, (x, y, z) => [x - lo[0], y - lo[1], z - lo[2]]);
 }
 
+// width along x
+function span(pos) {
+  let hi = -Infinity;
+  for (let i = 0; i < pos.length; i += 3) hi = Math.max(hi, pos[i]);
+  return hi;
+}
+
 // the profile view slices the same model at many heights, so keep the last one
 let sectionKey = null, section = null;
 
-self.onmessage = async ({ data: { id, task, shapes, o, names, z } }) => {
+self.onmessage = async ({ data: { id, task, shapes, o, names, z, scoop } }) => {
   try {
     await ready;
     if (task === "sections") {
@@ -33,6 +40,11 @@ self.onmessage = async ({ data: { id, task, shapes, o, names, z } }) => {
         section = sectionModel(shapes, o); sectionKey = key;
       }
       self.postMessage({ id, ...sectionsOf(section, o, z) });
+      return;
+    }
+    if (task === "scoops") {   // just the two scoops, no mold build
+      const files = buildScoops(scoop).map((pos, i) => ({ name: names[i], data: toSTL(toOrigin(pos), names[i]) }));
+      self.postMessage({ id, file: await zipFiles(files) });
       return;
     }
     const res = buildAll(shapes, o);
@@ -48,10 +60,15 @@ self.onmessage = async ({ data: { id, task, shapes, o, names, z } }) => {
         const clip = toOrigin(res.clip);
         for (let k = 0; k < 4; k++) objs.push({ name: `Corner clip ${k + 1}`, pos: clip, tx: k * 25, ty: o.S + 10 + 4 * (wallDepth(o) + 6) });
       }
+      if (scoop) {
+        const [c, s] = buildScoops(scoop).map(toOrigin), ty = o.S + 10 + (res.wall ? 4 * (wallDepth(o) + 6) + 40 : 0);
+        objs.push({ name: "Cement scoop, 1 part", pos: c, ty }, { name: `Sand scoop, ${scoop.ratio} parts`, pos: s, tx: span(c) + 10, ty });
+      }
       self.postMessage({ id, file: await build3MF(objs) });
     } else if (task === "stl") {
       const files = [{ name: names.plate, data: toSTL(res.plate, names.plate) }];
       if (res.wall) files.push({ name: names.wall, data: toSTL(mapPos(res.wall, wallPrint(o)), names.wall) }, { name: names.clip, data: toSTL(toOrigin(res.clip), names.clip) });
+      if (scoop) buildScoops(scoop).forEach((pos, i) => files.push({ name: names.scoops[i], data: toSTL(toOrigin(pos), names.scoops[i]) }));
       self.postMessage({ id, file: await zipFiles(files) });
     }
   } catch (e) {
