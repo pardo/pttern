@@ -1,12 +1,13 @@
 // Static force check for the detachable frame: where do the walls settle, and how hard does each
-// finger stop press, when the cords are tightened (plus any extra push you want to try)?
+// miter press, when the corners are clamped and the cords tightened (plus any extra push you want to try)?
 // Each wall is a rigid body in plan with three freedoms: slide along (u), move inwards (v) and
-// twist (φ, about its centre). The cords pull with their tension times the length of the loop
-// round the chamfer edges (the convex hull, as a tight cord would lie). Every finger stop and the
-// plate edge are stiff one-way contacts. The resting pose minimises the total energy: each round
+// twist (φ, about its centre). Each clamp squeezes its pair of flaps together with a steady force
+// at the middle of the flaps; the cords pull with their tension times the length of the loop round
+// the flap tips (the convex hull, as a tight cord would lie). Both ends of every miter face (its
+// inside edge and its flap tip) and the plate edge are stiff one-way contacts. The resting pose minimises the total energy: each round
 // linearises the contacts and the cord about the current pose and solves for the step with the
 // touching contacts held (an active set), until nothing moves. Lengths in mm, forces in N.
-import { wallInfo, chamferStart } from "./moldspec.js";
+import { wallInfo, cornerRadius, flapOutline, FLAP_LEN } from "./moldspec.js";
 
 const K = 2e4;      // contact stiffness, N/mm: stiff enough that stops give way by about a micron
 const EPS = 0.05;   // weak spring to home, N/mm: settles the frame floating in the plate gap (0.3 mm costs 0.015 N)
@@ -37,9 +38,9 @@ function solve(A, b) {   // Gaussian elimination with partial pivoting
 export const CORNERS = ["bottom-left", "bottom-right", "top-right", "top-left"];
 export const WALLS = ["bottom", "right", "top", "left"];
 
-// load: { tension: [N per cord...], push: { wall, at: 0..1 along, inward, along } (N),
-// cement: N of outward pressure on each wall (applied at its middle), error: mm the fingers at the
-// bottom-left corner are too long }
+// load: { tension: [N per cord...], clamp: N per corner, push: { wall, at: 0..1 along, inward, along } (N),
+// cement: N of outward pressure on each wall (applied at its middle), error: mm the bottom wall's
+// left miter stands proud at its inside edge (a miter cut a little off 45°) }
 // frameModel sets the problem up; round() moves all four walls one step together (optionally capped,
 // for animation), report() reads off forces and squareness. frameForces runs it to rest from home.
 export function frameForces(o, load) {
@@ -49,7 +50,7 @@ export function frameForces(o, load) {
   return m.report(q);
 }
 export function frameModel(o, load) {
-  const { I, L } = wallInfo(o), W = o.W, c = o.clear, S = o.S, h = S / 2, x0 = chamferStart(o), C = [L / 2, W / 2];
+  const { I, L } = wallInfo(o), W = o.W, c = o.clear, S = o.S, h = S / 2, C = [L / 2, W / 2];
   const T = (load.tension || []).reduce((a, b) => a + b, 0);
   // wall k at home: local -> world is a quarter turn k about the tile centre after shifting into place
   const home = k => { const a = k * Math.PI / 2, [tx, ty] = rot(a, [-W - c - h, -W - c - h]); return { a, tx: tx + h, ty: ty + h }; };
@@ -64,29 +65,27 @@ export function frameModel(o, load) {
     const [rx, ry] = rot(-f, [lx - u - C[0], ly - v - C[1]]);
     return [rx + C[0], ry + C[1]];
   };
-  // contacts: [label, corner, penetration(q)] with each finger face checked against the neighbour's
-  // body end both ways round, so the stop can carry a twist
-  const e = load.error || 0, contacts = [];
+  // contacts: [label, corner, penetration(q)]. Wall k's left miter (k-local x = y) meets wall j's
+  // right miter (j-local x + y = L); checking k's two face ends against j's face carries the twist.
+  const e = load.error || 0, contacts = [], [, tip] = flapOutline(), m = W + cornerRadius(o) * (1 - Math.SQRT1_2);
+  const open = (q, k, j, p) => { const [x, y] = toLocal(q, j, toWorld(q, k, p)); return (x + y - L) / Math.SQRT2; };   // > 0: apart
   for (let k = 0; k < 4; k++) {
-    const j = (k + 3) % 4, corner = k;   // wall k's left end meets wall j's right end
-    // k's left fingers against j's body end (j-local x = W + I); e makes this corner's fingers long
-    for (const p of [[x0 - W, W], [W, W]]) contacts.push([`${WALLS[k]} wall fingers`, corner, q => (W + I) - toLocal(q, j, toWorld(q, k, [p[0], p[1] + (k === 0 ? e : 0)]))[0]]);
-    for (const p of [[W + I, x0 - W], [W + I, W]]) contacts.push([`${WALLS[k]} wall fingers`, corner, q => (W + (k === 0 ? e : 0)) - toLocal(q, k, toWorld(q, j, p))[1]]);
-    // j's right fingers against k's body end (k-local x = W)
-    for (const p of [[L - (x0 - W), W], [W + I, W]]) contacts.push([`${WALLS[j]} wall fingers`, corner, q => toLocal(q, k, toWorld(q, j, [p[0], p[1]]))[0] - W]);
-    for (const p of [[W, x0 - W], [W, W]]) contacts.push([`${WALLS[j]} wall fingers`, corner, q => W - toLocal(q, j, toWorld(q, k, p))[1]]);
+    const j = (k + 3) % 4, inner = [m - (k === 0 ? e : 0) / Math.SQRT2, m + (k === 0 ? e : 0) / Math.SQRT2];   // e pushes it into the neighbour
+    contacts.push(["inside edge", k, q => -open(q, k, j, inner)], ["flap tip", k, q => -open(q, k, j, tip)]);
   }
   // plate edge: the plate's corners must stay outside each wall's inner face
   const plate = [[0, 0], [S, 0], [S, S], [0, S]];
   for (let k = 0; k < 4; k++) for (const p of [plate[k], plate[(k + 1) % 4]]) contacts.push([`plate edge`, -1 - k, q => W - toLocal(q, k, p)[1]]);
 
-  const bends = q => hull([0, 1, 2, 3].flatMap(k => [[k, toWorld(q, k, [x0, 0])], [k, toWorld(q, k, [L - x0, 0])]]));
+  const tips = [tip, flapOutline()[2]], bends = q => hull([0, 1, 2, 3].flatMap(k => tips.flatMap(p => [[k, toWorld(q, k, p)], [k, toWorld(q, k, [L - p[0], p[1]])]])));
+  const clampAt = [-FLAP_LEN / 2 / Math.SQRT2, -FLAP_LEN / 2 / Math.SQRT2];   // middle of the flaps, on the miter line
   const perimeter = q => { const b = bends(q); let s = 0; b.forEach((p, i) => { const n = b[(i + 1) % b.length][1]; s += Math.hypot(n[0] - p[1][0], n[1] - p[1][1]); }); return s; };
   const pushes = [...(load.push ? [load.push] : []), ...(load.cement ? [0, 1, 2, 3].map(wall => ({ wall, at: 0.5, inward: -load.cement, along: 0 })) : [])]
     .filter(p => p.inward || p.along);
   // energy pieces other than the contacts, as functions of the pose
   const outside = q => {
     let E = T * perimeter(q);
+    for (let k = 0; k < 4; k++) E += (load.clamp || 0) * open(q, k, (k + 3) % 4, clampAt);
     for (const push of pushes) {
       const at = [W + I * push.at, 0], p0 = toWorld(new Array(12).fill(0), push.wall, at), p1 = toWorld(q, push.wall, at);
       const [fx, fy] = rot(H[push.wall].a, [push.along, push.inward]);

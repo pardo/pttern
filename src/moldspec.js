@@ -4,16 +4,24 @@
 export function wallInfo(o) {
   // T is the finished tile thickness, relief included; the walls rise from the plate base (at least 1 mm of cement over the relief)
   const I = o.S + 2 * o.clear, L = I + 2 * o.W, H = o.B + Math.max(o.T, o.D + 1);
-  return { I, L, H, F: Math.max(3, 2 * Math.round((H / 7 - 1) / 2) + 1) };
+  return { I, L, H };
 }
 
-// Inside corner radius of the cavity. In the kit the outside corner is a 45° chamfer that cuts across
-// the finger joints; capping the radius at the wall thickness keeps about a third of each finger.
-export const cornerRadius = o => Math.max(0, Math.min(o.ri || 0, o.S / 4, o.kind === "kit" ? o.W : Infinity));
+// Inside corner radius of the cavity.
+export const cornerRadius = o => Math.max(0, Math.min(o.ri || 0, o.S / 4));
 
-// Where the kit's outer 45° chamfer meets the outer face, measured from the wall end. The chamfer
-// touches the circle of radius ri + W around the inside corner's centre, so the wall is never thinner than W.
-export const chamferStart = o => (o.W + cornerRadius(o)) * (2 - Math.SQRT2);
+// Kit corners are 45° miters. Each wall's miter face runs on past the outside corner as a flap, so
+// the two flaps at a corner lie face to face and a clamp (a binder clip or small spring clamp)
+// squeezes them together: a clamped miter can't hinge, so the frame stays square.
+export const FLAP_T = 4, FLAP_LEN = 14;   // flap thickness, and how far it runs past the outside corner
+// Flap outline at a wall's left end, in wall coords (x along the wall, y from the outer face in).
+// It hangs off the outer face between x = 0 and FLAP_T·√2; its first edge is the miter line x = y.
+export function flapOutline() {
+  const d = FLAP_LEN / Math.SQRT2, s = FLAP_T / Math.SQRT2;
+  return [[0, 0], [-d, -d], [-d + s, -d - s], [FLAP_T * Math.SQRT2, 0]];
+}
+// How far the wall reaches from the flap tips (outside) to the rounded inside corner, for the print layout.
+export const wallDepth = o => o.W + cornerRadius(o) * (1 - Math.SQRT1_2) + (FLAP_LEN + FLAP_T) / Math.SQRT2;
 
 // Plate lock (kit only): the plate's base layer sticks out this far as a tongue, and each wall has a
 // matching rebate along the bottom of its inner face, so the walls hold the plate down and cement
@@ -26,33 +34,11 @@ export function plateRadius(o) {
   return o.kind === "kit" && cornerRadius(o) > 0.3 ? Math.max(0, cornerRadius(o) - o.clear) : 0;
 }
 
-// Thinnest material allowed between a cord groove's 45° flank and the corner of the plate rebate.
-export const GROOVE_NECK = 3;
-
-// Cord groove centre heights. Two grooves sit near the top and bottom edges, leaving a 1.5 mm lip,
-// so most of each finger joint stays whole; all grooves stay clear of the gaps between finger slots.
-// With the plate lock, the bottom groove also rises until GROOVE_NECK of wall separates its lower
-// flank from the rebate's inside corner, where the cord pushes hardest.
+// Cord notch centre heights, cut across the flap tips. Two sit near the top and bottom edges,
+// leaving a 1.5 mm lip and the middle of the flaps free for the clamp.
 export function grooveHeights(o) {
-  const { H, F } = wallInfo(o), gw = Math.min(3, H / 6), gd = gw / 2, keep = gd + 0.6, edge = gd + 1.5;
-  const slots = Array.from({ length: F - 1 }, (_, j) => (j + 1) * H / F);
-  // distance from the flank line (z - depth = zc - gd) to the rebate corner (depth W - tongue, height B + clear)
-  const lowest = hasLock(o) ? (o.B + o.clear) - (o.W - LOCK_TONGUE) + gd + GROOVE_NECK * Math.SQRT2 : 0;
-  const place = (z, up) => {
-    for (const s of slots) if (Math.abs(z - s) < keep) z = up ? s + keep : s - keep;
-    return Math.min(H - keep, Math.max(keep, z));
-  };
-  if (o.grooves == 2) {
-    const zs = [place(Math.max(edge, lowest), true), place(H - edge, false)];
-    if (zs[1] - zs[0] >= gw + 1) return zs;   // too short a wall for two: fall back to one groove
-  }
-  if (o.grooves > 0) return [place(Math.max(H / 2, lowest), true)];
+  const { H } = wallInfo(o), gd = Math.min(3, H / 6) / 2, edge = gd + 1.5;
+  if (o.grooves == 2 && H - 2 * edge >= 2 * gd + 1) return [edge, H - edge];
+  if (o.grooves > 0) return [H / 2];
   return [];
-}
-// Thinnest wall between the bottom groove and the plate rebate, for the info box (null without both).
-export function grooveNeck(o) {
-  const zs = grooveHeights(o);
-  if (!hasLock(o) || !zs.length) return null;
-  const gd = Math.min(3, wallInfo(o).H / 6) / 2;
-  return (zs[0] - gd + (o.W - LOCK_TONGUE) - (o.B + o.clear)) / Math.SQRT2;
 }

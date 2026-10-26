@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { SYM, OFFS, xf, trace, isLine, lineWidth } from "./pattern.js";
 import { clone, dist, simplify, transformShape, flipShape, mirrored, pointOps, anchorCount, minAnchors, anchorOf, bezShown, toBez, deletePoint, addPoint, smoothPoint, cornerPoint, handlesLinked, snapTargets, snapDelta, magnetPts, centre, snap, angleRound } from "./shapes.js";
-import { wallInfo, cornerRadius, grooveHeights, grooveNeck, LOCK_TONGUE } from "./moldspec.js";
+import { wallInfo, cornerRadius, grooveHeights, flapOutline, FLAP_T, FLAP_LEN, LOCK_TONGUE } from "./moldspec.js";
 import { zipFiles } from "./files.js";
 import { TEMPLATES, FAMILIES, templateShapes, buildTemplate, buildQuarter, quarterable } from "./templates.js";
 import { frameForces, frameModel, CORNERS, WALLS } from "./forces.js";
@@ -833,7 +833,7 @@ document.addEventListener("keyup", e => { if (e.key === " ") { spaceDown = false
 // ---- settings panel
 const fmt = { strokeW: v => `${v} mm`, depth: v => `${v} mm`, draft: v => v ? `${v}°` : "straight", floor: v => `${v} mm`, wall: v => `${v} mm`, height: v => `${v} mm`, clear: v => `${v} mm`, innerRadius: v => v ? `${v} mm` : "square" };
 const KIND_HINT = {
-  kit: "A loose pattern plate inside four identical walls with finger joints. Push the walls on from outside, tie a cord in the groove to clamp them, and untie it to release the tile.",
+  kit: "A loose pattern plate inside four identical walls with mitered corners. Push the walls on from outside, put a binder clip or small clamp on the two flaps at each corner, and unclip them to release the tile.",
   one: "Plate and walls printed as a single piece.",
   plate: "Just the pattern plate. Use it as a stamp, or set it inside your own frame.",
 };
@@ -858,7 +858,7 @@ function spec() {
   if (cfg.kind === "kit") {
     const w = wallInfo(geomOpts(true));
     const plateW = cfg.lock ? S + 2 * LOCK_TONGUE : S;
-    lines.push(`Plate ${plateW} × ${plateW} × ${f1(plateH)} mm` + (cfg.lock ? `, ${LOCK_TONGUE} mm locking tongue all round` : ""), `Walls ×4 ${f1(w.L)} × ${f1(w.H)} × ${cfg.wall} mm, printed outer face down, no supports`, `${w.F} fingers per corner · cavity ${f1(w.I)} mm`, ...(cfg.grooves > 0 ? [`Cord grooves ${grooveHeights(geomOpts(true)).map(f1).join(" and ")} mm up from the bottom` + (grooveNeck(geomOpts(true)) != null ? `, at least ${f1(grooveNeck(geomOpts(true)))} mm of wall above the plate rebate` : "")] : []), `Needs a print bed of ${Math.ceil(Math.max(plateW, w.L))} mm or more`);
+    lines.push(`Plate ${plateW} × ${plateW} × ${f1(plateH)} mm` + (cfg.lock ? `, ${LOCK_TONGUE} mm locking tongue all round` : ""), `Walls ×4 ${f1(w.L)} × ${f1(w.H)} × ${cfg.wall} mm, printed standing on their top edge, no supports`, `Mitered corners · clamp flaps ${FLAP_LEN} mm long, ${FLAP_T} + ${FLAP_T} mm thick where they meet · cavity ${f1(w.I)} mm`, ...(cfg.grooves > 0 ? [`Cord notches in the flap tips ${grooveHeights(geomOpts(true)).map(f1).join(" and ")} mm up from the bottom`] : []), `Needs a print bed of ${Math.ceil(Math.max(plateW, w.L + FLAP_LEN * Math.SQRT2))} mm or more`);
   } else if (cfg.kind === "one") {
     lines.push(`Mold ${f1(S + 2 * cfg.wall)} × ${f1(S + 2 * cfg.wall)} × ${f1(wallInfo(geomOpts(true)).H)} mm`);
   } else lines.push(`Plate ${S} × ${S} × ${f1(plateH)} mm`);
@@ -869,8 +869,8 @@ function spec() {
   const step = cfg.draft ? cfg.depth * Math.tan(cfg.draft * Math.PI / 180) : 0;
   if (cfg.kind !== "plate") {
     const cr = cornerRadius(geomOpts(true));
-    const outside = cfg.kind === "kit" ? "45° chamfer outside" : `${f1(cr + cfg.wall)} mm outside`;
-    lines.push(`Corners ${f1(cr)} mm inside, ${outside}` + (cr < cfg.innerRadius - 0.01 ? ` (capped at the wall thickness so the joints keep their grip)` : ""));
+    const outside = cfg.kind === "kit" ? "45° miter with clamp flaps outside" : `${f1(cr + cfg.wall)} mm outside`;
+    lines.push(`Corners ${f1(cr)} mm inside, ${outside}` + (cr < cfg.innerRadius - 0.01 ? ` (capped at a quarter of the tile)` : ""));
   }
   lines.push(`Relief ${cfg.depth} mm${step ? `, sides taper ${f1(step)} mm` : ", straight sides"}`);
   $("#spec").innerHTML = lines.join("<br>");
@@ -959,10 +959,8 @@ function schedulePreview(ms = 150) {
 let profZ = null, profSeq = 0, profData = null, profTimer = null;
 function profNote(o, z) {
   if (o.kind !== "kit") return "";
-  const { H, F } = wallInfo(o), j = Math.min(F - 1, Math.floor(z / (H / F))), notes = [];
-  notes.push(`Finger slot ${j + 1} of ${F}: the ${j % 2 ? "left" : "bottom"} wall's finger fills the corner here.`);
-  const gd = Math.min(3, H / 6) / 2;
-  if (grooveHeights(o).some(g => Math.abs(z - g) < gd)) notes.push("This height cuts through a cord groove.");
+  const { H } = wallInfo(o), notes = [], gd = Math.min(3, H / 6) / 2;
+  if (grooveHeights(o).some(g => Math.abs(z - g) < gd)) notes.push("This height cuts through a cord notch in the flap tips.");
   if (o.lock && z < o.B + o.clear) notes.push("This height is in the plate rebate.");
   return notes.join(" ");
 }
@@ -1019,15 +1017,15 @@ function drawProfiles() {
   // edge: tile coords, 0 = plate edge, outside to the left; points arrive as [z, y]
   drawSection($("#profSide"), [[res.side.plate, plate], [res.side.walls[0] || [], wallA]],
     { u0: -W - c - 2, v0: -1, span: Math.max(H + 2.5, W + c + 14) }, p => [p[1], p[0]], z);
-  const r = cornerRadius(o);
+  const r = cornerRadius(o), out = W + c + 2 + (o.kind === "kit" ? (FLAP_LEN + FLAP_T) / Math.SQRT2 : 0);   // room for the clamp flaps
   drawSection($("#profPlan"), [[res.plan.plate, plate], [res.plan.walls[0] || [], wallA], [res.plan.walls[1] || [], wallB]],
-    { u0: -W - c - 2, v0: -W - c - 2, span: W + c + r + 12 }, p => p, null);
+    { u0: -out, v0: -out, span: out + r + 10 }, p => p, null);
 }
 window.addEventListener("resize", () => { drawProfiles(); if (view === "force") showForces(); });
 
 // ---- forces: static plan model of the frame under cord tension (src/forces.js)
 let forceTimer = null;
-const FORCE_INPUTS = ["fT", "fCem", "fErr", "fWall", "fIn", "fAlong", "fAt", "fX", "fView", "fZ"];
+const FORCE_INPUTS = ["fT", "fClamp", "fCem", "fErr", "fWall", "fIn", "fAlong", "fAt", "fX", "fView", "fZ"];
 FORCE_INPUTS.forEach(id => $("#" + id).addEventListener("input", () => {
   ui.inputs[id] = $("#" + id).value; saveUI();
   if (id === "fView" || id === "fX") { if (forceAnim) return drawForces(); }
@@ -1035,14 +1033,14 @@ FORCE_INPUTS.forEach(id => $("#" + id).addEventListener("input", () => {
 }));
 // the loads currently set in the panel
 function forceLoad(o) {
-  const T = +$("#fT").value, err = +$("#fErr").value, wall = +$("#fWall").value;
+  const T = +$("#fT").value, clamp = +$("#fClamp").value, err = +$("#fErr").value, wall = +$("#fWall").value;
   const push = wall >= 0 ? { wall, at: +$("#fAt").value, inward: +$("#fIn").value, along: +$("#fAlong").value } : null;
-  const cords = Math.max(1, grooveHeights(o).length);
+  const cords = grooveHeights(o).length;
   // wet cement: hydrostatic push on one wall = ½ ρ g d² × length (2400 kg/m³, d = tile thickness)
   const depth = Math.max(o.T, o.D + 1) / 1000, still = 0.5 * 2400 * 9.81 * depth * depth * (o.S / 1000), cem = still * +$("#fCem").value;
-  return { T, err, push, cords, cem, load: { tension: new Array(cords).fill(T), error: err, push, cement: cem } };
+  return { T, clamp, err, push, cords, cem, load: { tension: new Array(cords).fill(T), clamp, error: err, push, cement: cem } };
 }
-// Run: start all four walls loose and skewed and let the cords pull them in together, one solver step a frame
+// Run: start all four walls loose and skewed and let the clamps and cords pull them in together, one solver step a frame
 let forceAnim = null;
 $("#fRun").addEventListener("click", () => {
   if (cfg.kind !== "kit") return;
@@ -1058,7 +1056,7 @@ $("#fRun").addEventListener("click", () => {
     lastForce = { o, r, X: +$("#fX").value, push };
     drawForces();
     frame++;
-    $("#fStatus").textContent = shut ? `${shut} of 8 finger stops closed · worst corner ${Math.max(...r.angles.map(a => Math.abs(a - 90))).toFixed(3)}° off square` : "Walls closing in…";
+    $("#fStatus").textContent = shut ? `${shut} of 8 miter contacts closed · worst corner ${Math.max(...r.angles.map(a => Math.abs(a - 90))).toFixed(3)}° off square` : "Walls closing in…";
     if (still > 10 || frame > 900) { forceAnim = null; writeForceText(r, forceLoad(o)); $("#fStatus").textContent = `Settled after ${frame} steps`; return; }
     forceAnim.id = requestAnimationFrame(tick);
   };
@@ -1069,8 +1067,8 @@ function showForces() {
   const o = geomOpts(true), cv = $("#forceCv"), out = $("#fOut");
   if (cfg.kind !== "kit") { out.textContent = "The force check is for the detachable mold. Choose Detachable under Mold."; cv.hidden = true; return; }
   cv.hidden = false;
-  const X = +$("#fX").value, L = forceLoad(o), { T, err, push, cords, cem } = L;
-  $("#fTo").textContent = `${T} N × ${cords}`; $("#fErro").textContent = `${err.toFixed(2)} mm`; $("#fXo").textContent = `×${X}`;
+  const X = +$("#fX").value, L = forceLoad(o), { T, clamp, err, push, cords, cem } = L;
+  $("#fTo").textContent = cords ? `${T} N × ${cords}` : "no notches"; $("#fClampo").textContent = `${clamp} N`; $("#fErro").textContent = `${err.toFixed(2)} mm`; $("#fXo").textContent = `×${X}`;
   $("#fIno").textContent = `${push ? push.inward : 0} N`; $("#fAlongo").textContent = `${push ? push.along : 0} N`; $("#fAto").textContent = `${Math.round(+$("#fAt").value * 100)}%`;
   $("#fCemo").textContent = `×${$("#fCem").value} = ${cem.toFixed(1)} N a wall`;
   const r = frameForces(o, L.load);
@@ -1086,17 +1084,18 @@ function showForces() {
   }).catch(() => { });
   writeForceText(r, L);
 }
-function writeForceText(r, { T, cords, cem }) {
+function writeForceText(r, { T, clamp, cords, cem }) {
   const out = $("#fOut");
-  // each cord presses a wall inwards with √2 × its tension (two 45° bends at each end), shared by the two corners
-  const grip = Math.SQRT2 * T * cords, margin = cem > 0 ? grip / cem : Infinity;
+  // pulling a wall straight out opens both its miters by 1/√2 of the move: each clamp holds it with clamp/√2;
+  // each cord bends 90° round the two flap tips, pressing the wall in with its tension at each end
+  const grip = Math.SQRT2 * clamp + 2 * T * cords, margin = cem > 0 ? grip / cem : Infinity;
   const dev = r.angles.map(a => a - 90), worst = Math.max(...dev.map(Math.abs));
   const plate = r.stops.filter(s => s.corner < 0 && s.force > 0.5);
   const byCorner = CORNERS.map((name, k) => `${name}: ${r.stops.filter(s => s.corner === k).map(s => `${s.label} ${s.force.toFixed(1)} N${s.gap > 0.005 ? ` (open ${s.gap.toFixed(2)} mm)` : ""}`).join(", ")}`);
   const open = r.stops.filter(s => s.corner >= 0 && s.gap > 0.005);
   out.innerHTML = [
-    open.length ? `<b>${open.length} finger stop${open.length > 1 ? "s" : ""} opened</b>: the corners are not holding under this load`
-      : `<b>Corners hold</b>: every finger stop stays pressed shut` + (cem > 0 ? `. The cords press each wall in with ${grip.toFixed(0)} N against ${cem.toFixed(1)} N of cement, ${margin >= 100 ? "over 100" : margin.toFixed(0)}× more; they would need to drop to ${(cem / (Math.SQRT2 * cords)).toFixed(1)} N each before a joint could open` : ""),
+    open.length ? `<b>${open.length} miter contact${open.length > 1 ? "s" : ""} opened</b>: the corners are not holding under this load`
+      : `<b>Corners hold</b>: every miter stays pressed shut` + (cem > 0 ? `. The clamps${cords ? " and cords" : ""} hold each wall in with ${grip.toFixed(0)} N against ${cem.toFixed(1)} N of cement, ${margin >= 100 ? "over 100" : margin.toFixed(0)}× more` : ""),
     `Corner angles ${r.angles.map(a => a.toFixed(3) + "°").join(" · ")}`,
     `Out of square by ${worst.toFixed(3)}° at worst · diagonals differ by ${Math.abs(r.diagonals[0] - r.diagonals[1]).toFixed(3)} mm`,
     ...byCorner,
@@ -1109,8 +1108,8 @@ function drawForces() {
   const { o, r, X, push } = lastForce, cv = $("#forceCv"), T = tok(), px = Math.round(cv.clientWidth * dpr());
   if (!px) return;
   if (cv.width !== px) cv.width = cv.height = px;
-  const x = cv.getContext("2d"), { L } = wallInfo(o), W = o.W, S = o.S, c = o.clear, x0 = (W + cornerRadius(o)) * (2 - Math.SQRT2);
-  const shape = wallPlan.polys && wallPlan.polys.length ? wallPlan.polys : [[[x0, 0], [L - x0, 0], [L - (x0 - W), W], [x0 - W, W]]];
+  const x = cv.getContext("2d"), { L } = wallInfo(o), W = o.W, S = o.S, c = o.clear, ft = FLAP_LEN / Math.SQRT2;
+  const shape = wallPlan.polys && wallPlan.polys.length ? wallPlan.polys : [[[-ft, -ft], [0, 0], [L, 0], [L + ft, -ft], [L - W, W], [W, W]]];
   const plate = wallPlan.plate && wallPlan.plate.length ? wallPlan.plate : [[[0, 0], [S, 0], [S, S], [0, S]]];
   const scaled = (j, p) => { const h = r.home(j, p), s = r.toWorld(j, p); return [h[0] + (s[0] - h[0]) * X, h[1] + (s[1] - h[1]) * X]; };
   x.setTransform(1, 0, 0, 1, 0, 0); x.fillStyle = T.bg; x.fillRect(0, 0, px, px);
@@ -1118,7 +1117,7 @@ function drawForces() {
   // one view of the single simulation: the whole frame (zoom -1), the whole frame with its long sides
   // shortened so all four corners show at full scale (zoom 4), or a close-up of corner `zoom`
   function view(zoom, ox, oy, size) {
-    const far = S + W + c + 2, near = -W - c - 2, Z = W + c + cornerRadius(o) + 14;
+    const fl = (FLAP_LEN + FLAP_T) / Math.SQRT2, far = S + W + c + 2 + fl, near = -W - c - 2 - fl, Z = W + c + cornerRadius(o) + 14 + fl;
     let u0, v0, span, warp = a => a;
     if (zoom < 0) { span = S + 2 * (W + 26); u0 = v0 = -(W + 26); }
     else if (zoom === 4) {
@@ -1127,7 +1126,7 @@ function drawForces() {
       warp = a => a < near + Z ? a : a > far - Z ? a - mid + mid * sq : near + Z + (a - near - Z) * sq;
       u0 = v0 = near; span = 2 * Z + mid * sq;
     } else {
-      span = W + c + cornerRadius(o) + 12;
+      span = W + c + cornerRadius(o) + 12 + fl;
       u0 = zoom === 1 || zoom === 2 ? far - span : near;
       v0 = zoom >= 2 ? far - span : near;
     }
@@ -1174,9 +1173,11 @@ function drawForces() {
     x.setLineDash([3 * d, 3 * d]);   // where it sits by design
     for (let j = 0; j < 4; j++) { path(shape.map(pts => pts.map(p => r.home(j, p)))); x.strokeStyle = T.ink; x.globalAlpha = 0.45; x.stroke(); }
     x.globalAlpha = 1;
-    const bends = [0, 1, 2, 3].flatMap(j => [place(j, [x0, 0]), place(j, [L - x0, 0])]);   // the cord
-    x.setLineDash([6 * d, 4 * d]); x.strokeStyle = T.ink; x.lineWidth = 1.5 * d;
-    screenPath([bends]); x.stroke(); x.setLineDash([]);
+    if (r.tension > 0) {   // the cord, round the flap tips
+      const [, t1, t2] = flapOutline(), bends = [0, 1, 2, 3].flatMap(j => [t1, t2, [L - t2[0], t2[1]], [L - t1[0], t1[1]]].map(p => place(j, p)));
+      x.setLineDash([6 * d, 4 * d]); x.strokeStyle = T.ink; x.lineWidth = 1.5 * d;
+      screenPath([bends]); x.stroke(); x.setLineDash([]);
+    }
     if (zoom === 4) {   // break marks across the shortened middle of each side
       x.strokeStyle = T.bg; x.lineWidth = 3 * d;
       const m0 = (near + far) / 2;
@@ -1192,7 +1193,7 @@ function drawForces() {
     const block = (cn, bx, by, right, below) => {   // a corner's angle and stop forces
       // the corner's own position says which corner it is, so the frame view keeps the lines short
       const title = zoom === 4 ? `${r.angles[cn].toFixed(3)}°` : `${CORNERS[cn]} · ${r.angles[cn].toFixed(3)}°`;
-      const lines = [title, ...r.stops.filter(s => s.corner === cn).map(s => `${s.label.replace(" wall fingers", "")} ${s.force.toFixed(zoom === 4 ? 0 : 1)} N${s.gap > 0.005 ? ` · open ${s.gap.toFixed(2)}` : ""}`)];
+      const lines = [title, ...r.stops.filter(s => s.corner === cn).map(s => `${s.label} ${s.force.toFixed(zoom === 4 ? 0 : 1)} N${s.gap > 0.005 ? ` · open ${s.gap.toFixed(2)}` : ""}`)];
       const lh = (fs + 4) * d;
       x.textAlign = right ? "right" : "left";
       lines.forEach((l, i) => {

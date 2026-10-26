@@ -41,7 +41,7 @@
         </figure>
         <figure>
           <canvas id="profPlan" aria-label="Plan section through a corner at the chosen height"></canvas>
-          <figcaption><b>Corner plan</b> at the height below, seen from above. The two walls are shaded differently so you can see whose finger fills the corner at this height.</figcaption>
+          <figcaption><b>Corner plan</b> at the height below, seen from above. The two walls are shaded differently so you can see how the two miters meet and where the clamp flaps run out past the corner.</figcaption>
         </figure>
       </div>
       <div class="row">
@@ -53,11 +53,11 @@
     </div>
     <div class="prof" id="force" hidden>
       <figure>
-        <canvas id="forceCv" aria-label="Plan of the frame with cord and stop forces"></canvas>
-        <figcaption><b>Frame from above</b>, cut at the height below, movements exaggerated. One simulation of the four walls; the default view shortens the long sides so every corner shows at full scale. The outline shows where each wall sits by design, the fill where it settles under the load. Numbers are the force on each finger stop.</figcaption>
+        <canvas id="forceCv" aria-label="Plan of the frame with clamp, cord and contact forces"></canvas>
+        <figcaption><b>Frame from above</b>, cut at the height below, movements exaggerated. One simulation of the four walls; the default view shortens the long sides so every corner shows at full scale. The outline shows where each wall sits by design, the fill where it settles under the load. Numbers are the force at each end of each miter face.</figcaption>
       </figure>
       <div class="runRow">
-        <button class="btn primary" id="fRun"><b>Run: tighten from loose</b><small>All four walls start 2 mm out and skewed, then the cords pull them in together</small></button>
+        <button class="btn primary" id="fRun"><b>Run: tighten from loose</b><small>All four walls start 2 mm out and skewed, then the clamps and cords pull them in together</small></button>
         <span class="hint" id="fStatus" aria-live="polite"></span>
       </div>
       <div class="forceGrid">
@@ -74,14 +74,19 @@
           <input type="range" id="fT" min="0" max="200" step="5" value="40">
         </div>
         <div class="row">
+          <div class="lab"><label for="fClamp">Clamp force, each corner</label><output id="fClampo"></output></div>
+          <input type="range" id="fClamp" min="0" max="200" step="5" value="40">
+          <small>A 25 mm binder clip squeezes roughly 20–40 N, a small spring clamp 50–100 N.</small>
+        </div>
+        <div class="row">
           <div class="lab"><label for="fCem">Cement pushing out, × still pour</label><output id="fCemo"></output></div>
           <input type="range" id="fCem" min="0" max="100" step="1" value="1">
           <small>1 is a still pour of wet cement at your tile thickness. Pressing, tamping or vibrating the mix pushes harder: try 10–50.</small>
         </div>
         <div class="row">
-          <div class="lab"><label for="fErr">Bottom-left fingers too long by</label><output id="fErro"></output></div>
+          <div class="lab"><label for="fErr">Bottom-left miter proud at its inside edge by</label><output id="fErro"></output></div>
           <input type="range" id="fErr" min="-0.4" max="0.4" step="0.05" value="0">
-          <small>Try a print error: negative leaves that corner short.</small>
+          <small>Try a print error: a miter cut a little off 45°. Negative opens it at the inside edge instead.</small>
         </div>
         <div class="row">
           <div class="lab"><label for="fWall">Extra push on</label></div>
@@ -105,7 +110,7 @@
         </div>
       </div>
       <div class="spec" id="fOut"></div>
-      <p class="hint">A static model in plan: rigid walls that slide in, slide along and twist; cords that pull with their tension at every bend; and finger stops and the plate edge as one-way contacts. It shows where the force goes and whether the frame stays square. It ignores friction and flex, so real stops share a little less load and real parts give a little.</p>
+      <p class="hint">A static model in plan: rigid walls that slide in, slide along and twist; clamps that squeeze each pair of flaps; cords that pull with their tension at every bend; and both ends of each miter face and the plate edge as one-way contacts. It shows where the force goes and whether the frame stays square. It ignores friction and flex: the clamped miter faces really grip each other too, so the model errs on the safe side, and real parts give a little.</p>
     </div>
     <div class="ruler" id="ruler"><span id="rulerStart">0</span><span id="rulerMid">100 mm</span><span id="rulerEnd">200</span></div>
     <div class="tools" id="tools">
@@ -206,16 +211,17 @@
         <div class="row kitOnly">
           <div class="lab"><label for="in-clear">Joint clearance</label><output id="o-clear"></output></div>
           <input type="range" id="in-clear" data-k="clear" min="0.1" max="0.6" step="0.05">
-          <small>Gap between the finger joints, and between the plate and the walls.</small>
+          <small>Gap between the plate and the walls, and under the plate in the lock rebate.</small>
         </div>
         <div class="row wallOnly">
           <div class="lab"><label for="in-innerRadius">Corner radius</label><output id="o-innerRadius"></output></div>
           <input type="range" id="in-innerRadius" data-k="innerRadius" min="0" max="20" step="0.5">
-          <small>Rounds the tile corners. Each detachable wall carries one rounded corner, and its outside corners are 45° chamfers that keep the wall at least its full thickness and print without supports.</small>
+          <small>Rounds the tile corners. Each detachable wall carries one rounded corner; the split between the walls runs along the miter.</small>
         </div>
         <div class="row kitOnly">
-          <div class="lab"><label for="in-grooves">Cord grooves</label></div>
+          <div class="lab"><label for="in-grooves">Cord notches</label></div>
           <select id="in-grooves" data-k="grooves"><option value="0">None</option><option value="1">One, at mid-height</option><option value="2">Two, near the top and bottom edges</option></select>
+          <small>V notches across the flap tips, for an optional cord or band round the frame on top of the clamps.</small>
         </div>
         <label class="check kitOnly"><input type="checkbox" id="in-lock" data-k="lock"> <span>Lock the plate under the walls: a 2 mm tongue on the plate slides into a rebate in each wall, holding it down and keeping cement from getting underneath</span></label>
         <label class="check"><input type="checkbox" id="in-mirror" data-k="mirror"> <span>Mirror the pattern so the cast face reads the right way round</span></label>

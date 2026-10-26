@@ -4,7 +4,7 @@
 import ClipperLib from "clipper-lib";
 import Module from "manifold-3d";
 import { SYM, OFFS, xf, trace, isLine, lineWidth, flatten } from "./pattern.js";
-import { wallInfo, cornerRadius, chamferStart, plateRadius, grooveHeights, LOCK_TONGUE, hasLock } from "./moldspec.js";
+import { wallInfo, cornerRadius, flapOutline, FLAP_LEN, plateRadius, grooveHeights, LOCK_TONGUE, hasLock } from "./moldspec.js";
 
 let M = null;
 export async function initGeometry(opts) {
@@ -167,51 +167,42 @@ function fusedWalls(T, o) {
 }
 
 // One frame wall in local coords: x along its length, y from the outer face (0) to the inner face (W),
-// z up. All four walls are identical: the left end carries the even finger slots, the right end the
-// odd ones, so each corner interlocks, and the left end also carries the rounded inside corner.
-// Walls slide on from outside and cords in the grooves clamp them. Everything is shaped to print
-// outer face down without supports: 45° corner chamfers, 45° V-grooves, fillet on top.
+// z up. All four walls are identical: both ends are 45° miters, each running on past the outside
+// corner as a clamp flap, and the left end also carries the rounded inside corner. Walls slide on
+// from outside in any order; clamps on the flaps (and optionally a cord in the flap-tip notches)
+// hold them. Everything is a plan outline extruded up, so the wall prints standing on its top edge
+// without supports.
 function wallSolid(T, o) {
   const { Manifold, CrossSection } = M;
-  const { I, L, H, F } = wallInfo(o), W = o.W, E = 0.02, g = o.clear, ri = cornerRadius(o), x0 = chamferStart(o);
+  const { L, H } = wallInfo(o), W = o.W, g = o.clear, ri = cornerRadius(o);
   const box = (xa, xb, ya, yb, za, zb) => T(T(Manifold.cube([xb - xa, yb - ya, zb - za])).translate([xa, ya, za]));
-  const parts = [box(W, W + I, 0, W, 0, H)];
-  for (let j = 0; j < F; j++) {
-    // fingers run flush to the inner face: the cord pulls each one home against the neighbouring
-    // wall, so that face needs no gap; the slots get the clearance
-    const z0 = j * H / F + (j ? g / 2 : 0), z1 = (j + 1) * H / F - (j < F - 1 ? g / 2 : 0);
-    parts.push(j % 2 === 0 ? box(0, W + E, 0, W, z0, z1) : box(W + I - E, L, 0, W, z0, z1));
-  }
+  const both = ps => [ps, ps.map(([x, y]) => [L - x, y]).reverse()];   // left end, and its mirror at the right end
+  const outline = [[[0, 0], [L, 0], [L - W, W], [W, W]], ...both(flapOutline())];
   if (ri > 0.3) {
     // Rounded inside corner: the square between the two inner faces minus a circle of radius ri, split
-    // along the corner's diagonal so each wall carries the half against its own inner face (no thin tip
-    // running along the neighbour), with half the clearance either side of the split.
-    const c = W + ri, n = Math.max(12, Math.ceil(ri * Math.PI / 2 / 0.2)), pts = [[W, W - E], [c, W - E]];
+    // along the miter line so each wall carries the half against its own inner face and the split
+    // continues the miter face.
+    const c = W + ri, n = Math.max(12, Math.ceil(ri * Math.PI / 2 / 0.2)), pts = [[W, W - 0.02], [c, W - 0.02]];
     for (let i = 0; i <= n; i++) { const a = 1.5 * Math.PI - i / n * Math.PI / 2; pts.push([c + ri * Math.cos(a), c + ri * Math.sin(a)]); }
-    const d = g / Math.SQRT2;   // x - y >= d keeps g/2 from the diagonal
-    const half = [[W - 1 + d, W - 1], [c + 2, W - 1], [c + 2, c + 2 - d]];
+    const half = [[W - 1, W - 1], [c + 2, W - 1], [c + 2, c + 2]];
     for (const flip of [false, true]) {
       const f = ps => flip ? ps.map(([x, y]) => [L - x, y]) : ps;
-      parts.push(T(T(T(new CrossSection([f(pts)], "EvenOdd")).intersect(T(new CrossSection([f(half)], "EvenOdd")))).extrude(H)));
+      outline.push(...T(T(new CrossSection([f(pts)], "EvenOdd")).intersect(T(new CrossSection([f(half)], "EvenOdd")))).toPolygons());
     }
   }
-  let wall = T(Manifold.union(parts));
-  // rebate along the bottom of the inner face (fillet and finger tips included) for the plate's tongue
+  let wall = T(T(T(new CrossSection(outline, "Positive")).simplify(1e-4)).extrude(H));
+  // rebate along the bottom of the inner face (fillet included) for the plate's tongue
   if (hasLock(o)) wall = T(wall.subtract(box(-1, L + 1, W - LOCK_TONGUE, W + ri + 1, -1, o.B + g)));
-  // 45° chamfers across both outer corners
-  const top = W + ri + 2;
-  wall = T(wall.intersect(prism(T, [[[x0 + 1, -1], [L - x0 - 1, -1], [L + 1, x0 + 1], [L + 1, top], [-1, top], [-1, x0 + 1]]], -1, H + 1)));
-  // cord grooves: a 45° V running along the outer face and both chamfers
+  // cord notches: a 45° V across each flap tip, so a cord round the frame can't slide off
   const zs = grooveHeights(o);
   if (zs.length) {
-    const gd = Math.min(3, H / 6) / 2, mit = gd * Math.tan(Math.PI / 8) + 0.05;
-    const path = [[[0, x0], [x0, 0], 3, mit], [[x0, 0], [L - x0, 0], mit, mit], [[L - x0, 0], [L, x0], mit, 3]];
-    const cutters = [];
-    for (const zc of zs) for (const [P, Q, e0, e1] of path) {
-      const len = Math.hypot(Q[0] - P[0], Q[1] - P[1]), d = [(Q[0] - P[0]) / len, (Q[1] - P[1]) / len], nrm = [-d[1], d[0]];
+    const gd = Math.min(3, H / 6) / 2, [, P, Q] = flapOutline(), cutters = [];
+    for (const zc of zs) for (const [A, B] of both([P, Q])) {
+      const len = Math.hypot(B[0] - A[0], B[1] - A[1]), d = [(B[0] - A[0]) / len, (B[1] - A[1]) / len];
+      const nrm = A[0] < L / 2 ? [Math.SQRT1_2, Math.SQRT1_2] : [-Math.SQRT1_2, Math.SQRT1_2];   // into the flap
       const pts = [];
-      for (const [B, s] of [[P, -e0], [Q, e1]]) {
-        const b = [B[0] + d[0] * s, B[1] + d[1] * s];
+      for (const [E, s] of [[A, -1], [B, 1]]) {
+        const b = [E[0] + d[0] * s, E[1] + d[1] * s];
         pts.push([b[0] - nrm[0] * 0.6, b[1] - nrm[1] * 0.6, zc - gd - 0.6], [b[0] - nrm[0] * 0.6, b[1] - nrm[1] * 0.6, zc + gd + 0.6], [b[0] + nrm[0] * gd, b[1] + nrm[1] * gd, zc]);
       }
       cutters.push(T(Manifold.hull(pts)));
@@ -226,7 +217,8 @@ export function mapPos(a, f) {
   for (let i = 0; i < a.length; i += 3) { const p = f(a[i], a[i + 1], a[i + 2]); out[i] = p[0]; out[i + 1] = p[1]; out[i + 2] = p[2]; }
   return out;
 }
-export const wallPrint = o => { const H = wallInfo(o).H; return (x, y, z) => [x, H - z, y]; };   // outer face down, fillet on top
+// standing on its top edge (turned over about x), moved onto the positive quadrant: y runs from the inside corner (0) to the flap tips (wallDepth)
+export const wallPrint = o => { const H = wallInfo(o).H, d = FLAP_LEN / Math.SQRT2, top = o.W + cornerRadius(o) * (1 - Math.SQRT1_2); return (x, y, z) => [x + d, top - y, H - z]; };
 export const wallAssembly = (o, k, gap) => (x, y, z) => {             // wall k around the plate, turned 90° per k
   const h = o.S / 2;
   let px = x - o.W - o.clear, py = y - o.W - o.clear - gap;

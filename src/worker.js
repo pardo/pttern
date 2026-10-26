@@ -1,7 +1,7 @@
 // Builds mold geometry and export files off the main thread so the page stays responsive.
 import wasmUrl from "manifold-3d/manifold.wasm?url";
 import { initGeometry, buildAll, mapPos, wallAssembly, wallPrint, sectionModel, sectionsOf, freeModel } from "./geometry.js";
-import { wallInfo } from "./moldspec.js";
+import { wallDepth } from "./moldspec.js";
 import { build3MF, toSTL, zipFiles } from "./files.js";
 
 const ready = initGeometry({ locateFile: () => wasmUrl });
@@ -36,8 +36,8 @@ self.onmessage = async ({ data: { id, task, shapes, o, names, z } }) => {
     } else if (task === "3mf") {
       const objs = [{ name: o.kind === "one" ? "Mold" : "Pattern plate", pos: res.plate }];
       if (res.wall) {
-        const w = wallInfo(o), flat = mapPos(res.wall, wallPrint(o));
-        for (let k = 0; k < 4; k++) objs.push({ name: `Frame wall ${k + 1}`, pos: flat, ty: o.S + 10 + k * (w.H + 6) });
+        const flat = mapPos(res.wall, wallPrint(o));
+        for (let k = 0; k < 4; k++) objs.push({ name: `Frame wall ${k + 1}`, pos: flat, ty: o.S + 10 + k * (wallDepth(o) + 6) });
       }
       self.postMessage({ id, file: await build3MF(objs) });
     } else if (task === "stl") {
