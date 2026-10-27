@@ -9,6 +9,7 @@ export const WATER_CEMENT = 0.5;        // water to cement by weight
 export const SCOOP = 50;                // cement scoop, ml; the sand scoop holds RATIO times as much
 export const WATER_LINE = WATER_CEMENT * RHO_CEMENT;   // a scoop of cement takes the cement scoop filled to this share of its depth with water
 export const SCOOP_WALL = 2.4, SCOOP_FLOOR = 2, SCOOP_GROOVE = 0.6;
+export const SCOOP_HALF_TICK = 8, SCOOP_FILLET = 4, SCOOP_CHAMFER = 0.5;   // half-fill tick length, handle fillet radius, bottom chamfer, mm
 
 // Cast volume of one tile in ml: the full tile box. The pattern and rounded corners take a little
 // off that, which just adds to the spare.
@@ -16,9 +17,9 @@ export const tileVolume = o => o.S * o.S * Math.max(o.T, o.D + 1) / 1000;
 
 export function mixFor(o, tiles) {
   const wet = tileVolume(o), perTile = wet * DRY * SPARE / (1 + RATIO);   // ml of cement per tile
-  const cement = perTile * tiles, fills = Math.max(1, Math.ceil(cement / SCOOP - 0.05)), sand = cement * RATIO, cementG = cement * RHO_CEMENT;
+  const cement = perTile * tiles, fills = Math.max(0.5, Math.ceil(cement / SCOOP * 2 - 0.1) / 2), sand = cement * RATIO, cementG = cement * RHO_CEMENT;
   return {
-    wet, tiles, fills,   // level fills of each scoop for the batch, rounded up
+    wet, tiles, fills,   // level fills of each scoop for the batch, rounded up to a half (the tick marks)
     cement, sand, cementG, sandG: sand * RHO_SAND, water: cementG * WATER_CEMENT,
   };
 }

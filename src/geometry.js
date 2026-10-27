@@ -5,7 +5,7 @@ import ClipperLib from "clipper-lib";
 import Module from "manifold-3d";
 import { SYM, OFFS, xf, trace, isLine, lineWidth, flatten } from "./pattern.js";
 import { wallInfo, cornerRadius, flapOutline, fromUV, clipChannel, clipOutline, FLAP_LEN, plateRadius, LOCK_TONGUE, hasLock } from "./moldspec.js";
-import { scoopDims, SCOOP_WALL, SCOOP_FLOOR, SCOOP_GROOVE } from "./mix.js";
+import { scoopDims, SCOOP_WALL, SCOOP_FLOOR, SCOOP_GROOVE, SCOOP_HALF_TICK, SCOOP_FILLET, SCOOP_CHAMFER } from "./mix.js";
 
 let M = null;
 export async function initGeometry(opts) {
@@ -219,16 +219,19 @@ export const clipAssembly = (o, k, gap, lift) => {
 };
 
 // Measuring scoop: an open cup holding `ml` when filled level, with a flat blade handle along +x that
-// is flush with the rim, so a stick drawn across both strikes the fill off level. `holes` small holes
-// through the blade tell the scoops apart (1 part cement, 3 parts sand); `line` > 0 cuts a groove
-// round the inside with its lower edge at that share of the depth, the water mark. Prints as it stands.
+// is flush with the rim, so a stick drawn across both strikes the fill off level. `holes` small teardrop
+// holes through the blade tell the scoops apart (1 part cement, 3 parts sand); `line` > 0 cuts a groove
+// round the inside with its lower edge at that share of the depth, the water mark. A short tick in the
+// middle of each inside wall marks a half fill. Prints as it stands, with the bottom edge chamfered.
 function scoopSolid(T, ml, holes, line) {
-  const { CrossSection } = M, { w, h, r } = scoopDims(ml), t = SCOOP_WALL, H = h + SCOOP_FLOOR;
+  const { CrossSection } = M, { w, h, r } = scoopDims(ml), t = SCOOP_WALL, H = h + SCOOP_FLOOR, g = SCOOP_GROOVE;
   let cup = T(prism(T, [roundedSquare(-t, w + t, r + t)], 0, H).subtract(prism(T, [roundedSquare(0, w, r)], SCOOP_FLOOR, H + 1)));
   if (line > 0) {
-    const z = SCOOP_FLOOR + h * line, g = SCOOP_GROOVE;
+    const z = SCOOP_FLOOR + h * line;
     cup = T(cup.subtract(prism(T, [roundedSquare(-g, w + g, r + g)], z, z + 0.8)));
   }
+  const zh = SCOOP_FLOOR + h / 2, m = w / 2, k = SCOOP_HALF_TICK / 2, box = (xa, xb, ya, yb) => [[xa, ya], [xb, ya], [xb, yb], [xa, yb]];
+  cup = T(cup.subtract(prism(T, [box(-g, 0.1, m - k, m + k), box(w - 0.1, w + g, m - k, m + k), box(m - k, m + k, -g, 0.1), box(m - k, m + k, w - 0.1, w + g)], zh, zh + 0.8)));
   // blade side profile in (x, z): full height at the cup, tapering to a rounded end of height e
   const x0 = w + t - 1, x1 = w + t + Math.max(50, w), e = Math.min(H, 16), cx = x1 - e / 2, n = 16;
   const prof = [[x0, 0], [cx, 0]];
@@ -236,12 +239,27 @@ function scoopSolid(T, ml, holes, line) {
   prof.push([x0, H]);
   const contours = [prof];
   for (let i = 0; i < holes; i++) {
-    const hx = cx - i * 8, pts = [];
-    for (let j = 0; j < 24; j++) { const a = -j / 24 * 2 * Math.PI; pts.push([hx + 2.5 * Math.cos(a), e / 2 + 2.5 * Math.sin(a)]); }
+    // teardrop, point up: the 45° roof bridges without support when the blade prints standing
+    const hx = cx - i * 8, rh = 2.5, pts = [[hx, e / 2 + rh * Math.SQRT2]];
+    for (let j = 0; j <= 18; j++) { const a = Math.PI / 4 - j / 18 * 1.5 * Math.PI; pts.push([hx + rh * Math.cos(a), e / 2 + rh * Math.sin(a)]); }
     contours.push(pts);
   }
-  const blade = T(T(T(T(new CrossSection(contours, "EvenOdd")).extrude(5)).rotate([90, 0, 0])).translate([0, w / 2 + 2.5, 0]));
-  return T(cup.add(T(blade.subtract(prism(T, [roundedSquare(0, w, r)], SCOOP_FLOOR, H + 1)))));
+  // blade plan in (x, y): 5 mm wide, filleted into the cup wall and rounded at the tip
+  const b = 2.5, R = SCOOP_FILLET, rb = 2, xw = w + t, plan = [[x0, m - b - R]], arc = (ax, ay, rr, a0, a1) => {
+    for (let i = 0; i <= n; i++) { const a = (a0 + (a1 - a0) * i / n) * Math.PI / 180; plan.push([ax + rr * Math.cos(a), ay + rr * Math.sin(a)]); }
+  };
+  arc(xw + R, m - b - R, R, 180, 90); arc(x1 - rb, m - b + rb, rb, -90, 0); arc(x1 - rb, m + b - rb, rb, 0, 90); arc(xw + R, m + b + R, R, 270, 180);
+  plan.push([x0, m + b + R]);
+  const side = T(T(T(T(new CrossSection(contours, "EvenOdd")).extrude(2 * (b + R) + 2)).rotate([90, 0, 0])).translate([0, m + b + R + 1, 0]));
+  const blade = T(side.intersect(prism(T, [plan], -1, H + 1)));
+  let solid = T(cup.add(T(blade.subtract(prism(T, [roundedSquare(0, w, r)], SCOOP_FLOOR, H + 1)))));
+  // chamfer the bottom edge: thin slabs, each trimmed to the footprint inset by the chamfer left above it
+  const foot = T(solid.slice(0.01)), c = SCOOP_CHAMFER, steps = 8, far = T(new CrossSection([box(-500, 500, -500, 500)]));
+  for (let i = 0; i < steps; i++) {
+    const z0 = i ? i * c / steps : -1, z1 = (i + 1) * c / steps + 0.001, inset = c * (1 - (i + 0.5) / steps);
+    solid = T(solid.subtract(T(T(T(far.subtract(T(foot.offset(-inset, "Round")))).extrude(z1 - z0)).translate([0, 0, z0]))));
+  }
+  return solid;
 }
 // the cement scoop (with the water mark) and the sand scoop, `ratio` times its volume
 export function buildScoops({ cement, ratio, line }) {

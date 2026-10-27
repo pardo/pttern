@@ -5,6 +5,7 @@ import { SYM, OFFS, xf, trace, isLine, lineWidth } from "./pattern.js";
 import { clone, dist, simplify, transformShape, flipShape, mirrored, pointOps, anchorCount, minAnchors, anchorOf, bezShown, toBez, deletePoint, addPoint, smoothPoint, cornerPoint, handlesLinked, snapTargets, snapDelta, magnetPts, centre, snap, angleRound } from "./shapes.js";
 import { wallInfo, cornerRadius, FLAP_T, FLAP_LEN, FLARE, LOCK_TONGUE } from "./moldspec.js";
 import { mixFor, RATIO, SCOOP, WATER_LINE } from "./mix.js";
+import { scoopGuide } from "./scoopGuide.js";
 import { zipFiles } from "./files.js";
 import { TEMPLATES, FAMILIES, templateShapes, buildTemplate, buildQuarter, quarterable } from "./templates.js";
 import { frameForces, frameModel, CORNERS, WALLS } from "./forces.js";
@@ -884,16 +885,24 @@ function mix() { return mixFor(geomOpts(true), cfg.tiles); }
 function mixSpec() {
   if (cfg.kind === "plate") return;
   const m = mix(), ml = v => v < 1000 ? `${Math.round(v)} ml` : `${f1(v / 1000)} l`, g = v => v < 1000 ? `${Math.round(v)} g` : `${f1(v / 1000)} kg`;
-  const x = n => n === 1 ? "once" : `${n} times`;
+  const n = m.fills, half = n % 1 ? "½" : "", whole = Math.floor(n), t = m.tiles === 1 ? "1 tile" : `${m.tiles} tiles`;
+  const sc = `${whole || ""}${half} level scoop${n > 1 ? "s" : ""}`, times = n === 1 ? "once" : `${whole || ""}${half} times`;
   $("#in-tiles").value = cfg.tiles;
+  $("#mixSteps").innerHTML = [
+    `<b>Cement:</b> ${sc} with the small scoop (1 hole in the handle)`,
+    `<b>Sand:</b> ${sc} with the big scoop (3 holes)`,
+    `Stir the two together dry until the colour is even`,
+    `<b>Water:</b> ${n === 0.5 ? "the small scoop filled about half way to its groove" : `the small scoop filled to its groove, ${times}${half ? " (for the half, fill it about half way to the groove)" : ""}`}. Pour a little at a time and stop when it is a thick paste`,
+  ].map(s => `<li>${s}</li>`).join("");
   $("#mix").innerHTML = [
-    `Cast ${ml(m.wet)} a tile` + (m.tiles > 1 ? `, ${ml(m.wet * m.tiles)} for ${m.tiles}` : ""),
+    `Without the scoops, for ${t}:`,
     `Cement ${ml(m.cement)} · ${g(m.cementG)}`,
     `Sand ${ml(m.sand)} · ${g(m.sandG)}`,
-    `Water ${ml(m.water)}, add a little at a time`,
-    `<b>Scoops</b> fill each ${x(m.fills)}; water: the cement scoop to its groove, ${x(m.fills)}`,
+    `Water ${ml(m.water)}`,
+    `Cast ${ml(m.wet)} a tile`,
   ].join("<br>");
 }
+$("#scoopGuide").innerHTML = scoopGuide;
 $("#in-tiles").addEventListener("change", () => {
   cfg.tiles = Math.max(1, Math.min(200, Math.round(+$("#in-tiles").value) || 1)); persist(); mixSpec();
 });
