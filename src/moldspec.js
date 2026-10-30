@@ -18,7 +18,7 @@ export const cornerRadius = o => Math.max(0, Math.min(o.ri || 0, o.S / 4));
 // takes up the play.
 export const FLAP_T = 4, FLAP_LEN = 14;      // flap thickness, and how far it runs past the outside corner
 export const FLARE = 2, FLARE_LEN = 3;        // how much each flap thickens towards its tip, over this length (a 34° hook)
-export const CLIP_T = 3;                     // clip jaw and back thickness
+export const CLIP_T = 4.5;                   // clip jaw and back thickness
 // Flap-pair coords: u runs along the miter line out from the outside corner, v across it, positive
 // towards the wall that owns the flap. Wall coords at its left end: x along the wall, y in from the outer face.
 export const fromUV = ([u, v]) => [(-u + v) / Math.SQRT2, (-u - v) / Math.SQRT2];
